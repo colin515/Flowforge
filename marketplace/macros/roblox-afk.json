@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "Default Roblox Anti-AFK",
+  "blocks": [
+    {
+      "type": "loop",
+      "count": 0,
+      "body": [
+        {
+          "type": "wait",
+          "ms": 45000,
+          "jitter": 15000
+        },
+        {
+          "type": "move",
+          "x": 3,
+          "y": 0,
+          "relative": true
+        },
+        {
+          "type": "wait",
+          "ms": 120,
+          "jitter": 30
+        },
+        {
+          "type": "move",
+          "x": -3,
+          "y": 0,
+          "relative": true
+        }
+      ]
+    }
+  ]
+}
