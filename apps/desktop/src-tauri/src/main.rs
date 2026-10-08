@@ -31,6 +31,7 @@ enum InputEvent {
  #[serde(rename="click")]Click{button:String},
  #[serde(rename="button")]Button{button:String,action:String},
  #[serde(rename="key")]Key{key:String,action:String,#[serde(rename="holdMs")]hold_ms:u32},
+ #[serde(rename="text")]Text{value:String},
 }
 fn key(name:&str)->Result<Key,String>{Ok(match name {"Space"=>Key::Space,"Enter"=>Key::Return,"Tab"=>Key::Tab,"Escape"=>Key::Escape,"ArrowUp"=>Key::UpArrow,"ArrowDown"=>Key::DownArrow,"ArrowLeft"=>Key::LeftArrow,"ArrowRight"=>Key::RightArrow,s if s.len()==1&&s.chars().all(|c|c.is_ascii_alphanumeric())=>Key::Unicode(s.chars().next().unwrap()),_=>return Err("Unsupported key".into())})}
 fn button(name:&str)->Result<Button,String>{match name{"left"=>Ok(Button::Left),"right"=>Ok(Button::Right),_=>Err("Unsupported mouse button".into())}}
@@ -53,6 +54,7 @@ fn lock(n:&Native)->Result<std::sync::MutexGuard<'_,RunState>,String>{n.0.lock()
  InputEvent::Click{button:name}=>{let b=button(&name)?;if let Some(r)=rect{let(x,y)=s.enigo.location().map_err(|e|e.to_string())?;if !r.contains(x,y){return Err("Move the cursor inside the target window".into())}}s.enigo.button(b,Direction::Click).map_err(|e|e.to_string())?;},
  InputEvent::Button{button:name,action}=>{let b=button(&name)?;let d=direction(&action)?;if d==Direction::Press{if let Some(r)=rect{let(x,y)=s.enigo.location().map_err(|e|e.to_string())?;if !r.contains(x,y){return Err("Cursor outside target".into())}}s.buttons.push(b)}else{s.buttons.retain(|v|*v!=b)}s.enigo.button(b,d).map_err(|e|e.to_string())?;},
  InputEvent::Key{key:name,action,hold_ms}=>{if hold_ms>5000{return Err("Key hold too long".into())}let k=key(&name)?;let d=direction(&action)?;if d==Direction::Press{s.keys.push(k)}else{s.keys.retain(|v|*v!=k)}s.enigo.key(k,d).map_err(|e|e.to_string())?;}
+ InputEvent::Text{value}=>{if value.is_empty()||value.chars().count()>1000||value.contains('\0'){return Err("Invalid text input".into())}s.enigo.text(&value).map_err(|e|e.to_string())?;}
  }Ok(())
 }
 #[derive(Serialize)]struct Position{x:i32,y:i32}

@@ -93,6 +93,9 @@ export class Runner {
             await this.bridge.input({ ...b, action: "up" }).catch(() => {});
           }
           break;
+        case "text":
+          await this.bridge.input(b);
+          break;
         case "drag":
           try {
             await this.bridge.input({

@@ -149,3 +149,16 @@ test("stop during vision prevents any subsequent click", async () => {
   );
   assert.equal(calls.length, 0);
 });
+test("text blocks validate and stop before typing when focus check fails", async () => {
+  const macro = { version: 1, name: "Type a note", blocks: [{ type: "text", value: "Hello, world!" }] };
+  assert.equal(validateMacro(macro), macro);
+  assert.throws(() => validateMacro({ ...macro, blocks: [{ type: "text", value: "bad\0input" }] }));
+  const calls = [];
+  const runner = new Runner({
+    check: async () => { throw new Error("Target lost focus"); },
+    input: async (event) => calls.push(event),
+    release: async () => calls.push("released"),
+  }, {});
+  await assert.rejects(runner.run(macro), /Target lost focus/);
+  assert.deepEqual(calls, ["released"]);
+});

@@ -3,6 +3,7 @@ export const defaults = {
   move: { type: "move", x: 4, y: 0, relative: true },
   click: { type: "click", button: "left" },
   key: { type: "key", key: "Space", holdMs: 50 },
+  text: { type: "text", value: "Hello, world!" },
   drag: { type: "drag", x: 200, y: 200, toX: 400, toY: 200, duration: 500 },
   findText: {
     type: "findText",
@@ -158,6 +159,10 @@ export function validateMacro(m) {
             fail("Unsupported key");
           num(b.holdMs, 0, 5000, "hold");
           if (!Number.isInteger(b.holdMs)) fail("Hold must be an integer");
+          break;
+        case "text":
+          if (typeof b.value !== "string" || !b.value.length || b.value.length > 1000 || b.value.includes("\0"))
+            fail("Text must contain 1–1000 characters without NUL bytes");
           break;
         case "drag":
           for (const k of ["x", "y", "toX", "toY"]) {

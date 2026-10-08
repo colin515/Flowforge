@@ -7,10 +7,10 @@ landing page. Tauri 2 + Rust + React power the desktop; React/Vite and CSS power
 the GitHub Pages site. Tesseract.js supplies open-source OCR. Plain CSS keeps the
 styling dependency footprint small; Lucide provides consistent SVG icons.
 
-**Status:** both website production builds, shared interpreter tests, the native
-Rust check and the Windows NSIS installer build pass in GitHub Actions. Release
-`v0.1.0` contains the downloadable `.exe` installer. The marketplace is a
-working browser-local demo, not a connected community service.
+**Status:** v0.2.0 separates the desktop into Builder, Marketplace, and Run &
+Logs views. The new Windows installer is built by GitHub Actions. Marketplace
+engagement remains local to each device; shared accounts, counts, and moderation
+require a service beyond static GitHub Pages.
 
 ## Included
 
@@ -24,7 +24,7 @@ working browser-local demo, not a connected community service.
   keyboard-friendly controls, reorder, inspect fields, duplicate, save,
   import/export JSON. Built-in Anti-AFK is immutable in the UI; editable copies
   are supported. Starter items remain present after reload.
-- Relative/absolute movement, left/right clicks, timed key holds, drags, waits,
+- Relative/absolute movement, left/right clicks, timed key holds, text typing, drags, waits,
   randomized delays, finite/infinite nested loops and found/not-found branches.
 - Text/phrase and RGB color matching; pixel-coordinate click results. OCR worker
   and WASM load on demand. English traineddata downloads on first use.
@@ -79,23 +79,22 @@ use `npm run dev -w @flowforge/web -- --host 127.0.0.1`.
 - Marketplace: https://colin515.github.io/Flowforge/marketplace/
 - Latest Windows release: https://github.com/colin515/Flowforge/releases/latest
 
-The Pages workflow publishes two distinct web entries: the landing page at the
-site root and the marketplace under `/marketplace/`, including its catalog and
-downloadable JSON macros. The Windows workflow validates
-Rust and creates the NSIS installer. Release tags use the matching app version,
-for example `v0.1.0`.
+The Pages workflow builds the two web entries and commits the output to the
+`split-websites` branch. GitHub Pages serves the branch root, with the marketplace
+under `/marketplace/`, including its catalog and JSON macros. The Windows workflow
+validates Rust and publishes the NSIS installer as release `v0.2.0`.
 
 ## Source layout
 
 ```text
 flowforge/
   .github/workflows/
-    pages.yml                   # Static Pages deployment
-    windows.yml                 # Rust check, NSIS build, draft Release
+    pages.yml                   # Build and publish both sites to split-websites
+    windows.yml                 # Rust check, NSIS build, GitHub Release
   apps/
     desktop/
       src/
-        main.jsx                # Studio, nested block builder, clicker panel
+        main.jsx                # Isolated Builder, Marketplace and Run views
         vision.js               # Tesseract OCR and pixel color matching
         style.css               # Adaptive light/dark desktop interface
       public/ocr/               # Generated worker/WASM, not committed
@@ -108,15 +107,15 @@ flowforge/
         build.rs
         tauri.conf.json
       index.html
-      marketplace.html
-      public/catalog.json
-      public/macros/*.json
       package.json
       vite.config.js
     web/
       src/main.jsx              # Landing page and separate marketplace
       src/style.css             # Glass navigation, animation, responsive themes
       index.html
+      marketplace/index.html
+      public/marketplace/catalog.json
+      public/marketplace/macros/*.json
       package.json
       vite.config.js
   packages/shared/
@@ -178,7 +177,7 @@ for the separately hosted service needed for shared uploads, votes and reports.
 
 Verified: Vite production builds for web and desktop renderer; starter schema,
 unknown-action/field rejection, nested loop/branch order, OCR click coordinate
-translation, humanized movement endpoints and cancellation cleanup (7 tests).
+translation, humanized movement endpoints, text validation and cancellation cleanup (8 tests).
 Browser interaction/screenshot testing was unavailable because the workspace had
 no Chromium executable and its browser download failed.
 Native Rust compilation and runtime behavior require Windows CI and interactive

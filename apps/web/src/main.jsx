@@ -58,7 +58,7 @@ function App() {
     document.documentElement.style.colorScheme = theme;
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", theme === "dark" ? "#0b0c10" : "#f7f7f5");
+      ?.setAttribute("content", theme === "dark" ? "#1c1c1e" : "#f5f5f7");
     localStorage.setItem("ff-theme", JSON.stringify(theme));
   }, [theme]);
   useEffect(() => {
