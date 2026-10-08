@@ -147,7 +147,9 @@ function App() {
       setError(e.message);
     }
   };
-  const marketplacePage = window.location.pathname.endsWith("marketplace.html");
+  const marketplacePage = window.location.pathname.includes("/marketplace/");
+  const homeUrl = marketplacePage ? "../" : "./";
+  const marketplaceUrl = marketplacePage ? "./" : "./marketplace/";
   const marketplaceSection = (
     <section id="marketplace" className="marketplace marketplace-page visible">
       <div className="markethead">
@@ -315,15 +317,15 @@ function App() {
   return (
     <>
       <nav>
-        <a className="brand" href="./">
+        <a className="brand" href={homeUrl}>
           <span className="brandmark">
             <Command size={19} />
           </span>
           flowforge<span className="beta">BETA</span>
         </a>
         <div className="navlinks">
-          <a href={marketplacePage ? "./#features" : "#features"}>Overview</a>
-          <a href="./marketplace.html">Marketplace</a>
+          <a href={marketplacePage ? "../#features" : "#features"}>Overview</a>
+          <a href={marketplaceUrl}>Marketplace</a>
           <button
             aria-label="Toggle theme"
             className="iconbutton"
@@ -364,7 +366,7 @@ function App() {
                   Download for Windows
                   <ArrowUpRight size={17} />
                 </a>
-                <a className="textbutton" href="./marketplace.html">
+                <a className="textbutton" href="./marketplace/">
                   Explore the marketplace <ArrowRight size={17} />
                 </a>
               </div>
@@ -544,7 +546,7 @@ function App() {
                   on the dedicated marketplace.
                 </p>
               </div>
-              <a className="primary" href="./marketplace.html">
+              <a className="primary" href="./marketplace/">
                 Open marketplace <ArrowUpRight size={17} />
               </a>
             </section>
