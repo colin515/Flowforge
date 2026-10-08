@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "roblox-afk",
+      "name": "Default Roblox Anti-AFK",
+      "category": "Utility",
+      "description": "Small relative movements with configurable randomized waits.",
+      "url": "https://colin515.github.io/Flowforge/marketplace/macros/roblox-afk.json",
+      "builtIn": true
+    },
+    {
+      "id": "auto-clicker",
+      "name": "Auto-Clicker",
+      "category": "Productivity",
+      "description": "A focused clicker with configurable interval and mouse button.",
+      "url": "https://colin515.github.io/Flowforge/marketplace/macros/auto-clicker.json",
+      "builtIn": true
+    },
+    {
+      "id": "ad-skipper",
+      "name": "Smart Ad Skipper",
+      "category": "Vision",
+      "description": "Find visible Skip text with OCR and click the matched label.",
+      "url": "https://colin515.github.io/Flowforge/marketplace/macros/ad-skipper.json",
+      "builtIn": true
+    }
+  ]
+}
