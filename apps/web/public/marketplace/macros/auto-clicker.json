@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "Auto-Clicker",
+  "blocks": [
+    {
+      "type": "loop",
+      "count": 0,
+      "body": [
+        {
+          "type": "click",
+          "button": "left"
+        },
+        {
+          "type": "wait",
+          "ms": 100,
+          "jitter": 0
+        }
+      ]
+    }
+  ]
+}
