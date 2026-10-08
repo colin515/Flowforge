@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "name": "Da Hood Mobility Flow",
+  "blocks": [
+    {
+      "type": "loop",
+      "count": 0,
+      "body": [
+        {
+          "type": "keyChord",
+          "keys": "w+Shift",
+          "holdMs": 180
+        },
+        {
+          "type": "wait",
+          "ms": 80,
+          "jitter": 30
+        },
+        {
+          "type": "keyChord",
+          "keys": "a+Shift",
+          "holdMs": 110
+        },
+        {
+          "type": "keyChord",
+          "keys": "d+Shift",
+          "holdMs": 110
+        },
+        {
+          "type": "wait",
+          "ms": 120,
+          "jitter": 40
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,8 @@ and live OCR were not verified there. The Windows Actions job compiles the nativ
 code and builds the installer; these interactive checks still require Windows.
 
 1. Install from the generated NSIS artifact on Windows 10/11 with WebView2.
+   On first launch, confirm the library and builder are empty. Install a catalog
+   macro, restart, and confirm only the installed macro persists.
 2. Use a test window (Notepad) first. Start a finite loop, switch to that window
    within the three-second countdown, then verify click/key/hold behavior.
 3. Press F8 during a delay, drag, key hold and OCR request. All held input must
@@ -18,6 +20,9 @@ code and builds the installer; these interactive checks still require Windows.
    verify its bounding box center and confidence threshold. Use dry review
    (`click: false`) before enabling clicks. Test a multi-word label as well.
 7. Verify Find Color, timeout, found/not-found branches and nested loops.
+   Upload a tightly cropped image template at most 128 × 128 pixels. Confirm
+   match confidence and center coordinates in the log, then test click and
+   no-match timeout against the selected window.
 8. Test global input, target window input and monitor boundaries separately.
    Vision currently supports a target fully on one monitor at 100% scaling;
    global vision scans the monitor containing screen coordinate (0,0).
@@ -25,6 +30,9 @@ code and builds the installer; these interactive checks still require Windows.
    them. Import valid JSON, save, restart, export and compare the macro contents.
 10. Run release/update checking against your own published release. Offline or
     rate-limited GitHub must not prevent normal local use.
+11. Test smooth movement with and without humanization in client-relative and
+    global mode. The final cursor position must be exact. Stop during a key
+    chord and confirm each key is released.
 
 Protected/elevated apps, exclusive fullscreen games, and some Roblox input paths
 may reject synthetic input or screenshot capture. No guarantee of anti-AFK

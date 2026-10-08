@@ -18,7 +18,6 @@ import {
   Moon,
   Play,
   Layers,
-  Command,
   Flag,
   Star,
 } from "lucide-react";
@@ -28,6 +27,7 @@ import {
   downloadJSON,
 } from "../../../packages/shared/macros.js";
 import config from "../../../config.json";
+import logoUrl from "./assets/flowforge-mark.svg";
 import "./style.css";
 const icons = { orbit: Orbit, pointer: MousePointer2, scan: ScanLine };
 function saved(k, fallback) {
@@ -170,7 +170,7 @@ function App() {
       </div>
       <div className="markettoolbar">
         <div className="tabs">
-          {["All", "Utility", "Productivity", "Vision"].map((v) => (
+          {["All", "Utility", "Productivity", "Vision", "Gaming"].map((v) => (
             <button
               key={v}
               className={v === filter ? "selected" : ""}
@@ -204,6 +204,7 @@ function App() {
           .map((x, i) => {
             const Icon = icons[x.icon] ?? Layers;
             const s = stats[x.id] ?? {};
+            const official = starters.some((item) => item.id === x.id);
             return (
               <article className="macrocard" key={x.id}>
                 <div className="cardtop">
@@ -227,8 +228,8 @@ function App() {
                 <h3>{x.name}</h3>
                 <p>{x.description}</p>
                 <div className="author">
-                  <span className="avatar">{i < 3 ? "F" : "Y"}</span>
-                  {i < 3 ? "Flowforge" : "You · local upload"}
+                  <span className="avatar">{official ? "F" : "Y"}</span>
+                  {official ? "Flowforge" : "You · local upload"}
                   <span className="verified">
                     <Check size={12} />
                   </span>
@@ -292,7 +293,7 @@ function App() {
                       />
                     </button>
                   ))}
-                  {!x.locked && i >= 3 && (
+                  {!official && (
                     <button
                       className="delete"
                       onClick={() =>
@@ -319,7 +320,7 @@ function App() {
       <nav>
         <a className="brand" href={homeUrl}>
           <span className="brandmark">
-            <Command size={19} />
+            <img src={logoUrl} alt="" />
           </span>
           flowforge<span className="beta">BETA</span>
         </a>
@@ -390,12 +391,12 @@ function App() {
                 <div className="productbody">
                   <aside>
                     <div className="mockbrand">
-                      <Command size={18} /> Studio
+                      <img src={logoUrl} alt="" /> Studio
                     </div>
                     <small>WORKSPACE</small>
                     <div className="active">
                       <Layers size={15} />
-                      My macros <span>3</span>
+                      My macros <span>0</span>
                     </div>
                     <div>
                       <ScanLine size={15} />
@@ -414,7 +415,7 @@ function App() {
                   <div className="mockcanvas">
                     <div className="mockhead">
                       <div>
-                        <small>MY MACROS / PRODUCTIVITY</small>
+                        <small>EXAMPLE FLOW / PRODUCTIVITY</small>
                         <h3>A little less clicking.</h3>
                       </div>
                       <span className="play">
@@ -511,8 +512,8 @@ function App() {
                   </div>
                   <h3>A flow that can see.</h3>
                   <p>
-                    Find visible text and colors. Turn a match into an action
-                    with OCR-powered vision blocks.
+                    Find visible text, colors, and image templates. Turn a
+                    match into an action with OCR and visual matching.
                   </p>
                   <div className="scanpreview">
                     <span>Video playing</span>
@@ -542,7 +543,7 @@ function App() {
                 <div className="sectionlabel">THE COMMUNITY TOOLBOX</div>
                 <h2>Discover flows made to save time.</h2>
                 <p>
-                  Browse verified starter macros, ratings, and community uploads
+                  Browse curated starter macros, ratings, and community uploads
                   on the dedicated marketplace.
                 </p>
               </div>
@@ -576,7 +577,7 @@ function App() {
       </main>
       <footer>
         <a className="brand" href="#">
-          <Command size={19} />
+          <img className="footer-mark" src={logoUrl} alt="" />
           flowforge
         </a>
         <span>Thoughtfully made. Open by design.</span>

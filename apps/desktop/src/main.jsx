@@ -2,29 +2,31 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
-  Activity, ArrowDown, ArrowUp, Check, ChevronRight, Command, Copy,
+  Activity, ArrowDown, ArrowUp, Check, ChevronRight, Copy,
   Download, ExternalLink, Flag, GripVertical, Layers, Lock, Moon,
   MousePointer2, Play, Plus, RefreshCw, Save, ScanLine, Search,
-  ShieldCheck, Square, Star, Store, Sun, ThumbsDown, ThumbsUp,
+  ShieldCheck, Square, Star, Store, Sun, ThumbsDown, ThumbsUp, Image as ImageIcon,
   Trash2, Upload, X,
 } from "lucide-react";
 import { starters, defaults, clone, validateMacro, parseMacro, downloadJSON } from "../../../packages/shared/macros.js";
 import { Runner } from "../../../packages/shared/runner.js";
 import { Vision } from "./vision.js";
+import logoUrl from "./assets/flowforge-mark.svg";
 import config from "../../../config.json";
 import "./style.css";
 
 const labels = {
   wait: "Wait / random delay", move: "Move mouse", click: "Mouse click",
-  key: "Press / hold key", text: "Type text", drag: "Drag mouse",
-  findText: "Find text", findColor: "Find color", loop: "Repeat / infinite loop",
+  key: "Press / hold key", keyChord: "Key chord", text: "Type text", drag: "Drag mouse",
+  findText: "Find text", findColor: "Find color", findImage: "Find image",
+  loop: "Repeat / infinite loop",
   ifFound: "If match / else",
 };
 const colors = {
-  wait: "mint", move: "peach", click: "peach", key: "peach", text: "peach",
-  drag: "peach", findText: "blue", findColor: "blue", loop: "lavender", ifFound: "lavender",
+  wait: "mint", move: "peach", click: "peach", key: "peach", keyChord: "peach", text: "peach",
+  drag: "peach", findText: "blue", findColor: "blue", findImage: "blue", loop: "lavender", ifFound: "lavender",
 };
-const get = (object, path) => path.reduce((value, key) => value[key], object);
+const get = (object, path) => path.reduce((value, key) => value?.[key], object);
 const readLocal = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
 };
@@ -38,13 +40,16 @@ const catalogFallback = starters.map(({ id, name, category, description }) => ({
 const formatTime = () => new Date().toLocaleTimeString([], { hour12: false });
 
 function App() {
-  const [custom, setCustom] = useState(() => readLocal("ff-macros", []).filter((entry) => {
-    try { validateMacro(entry.macro); return typeof entry.id === "string"; } catch { return false; }
-  }));
-  const all = [...starters, ...custom];
-  const [id, setId] = useState(starters[0].id);
-  const selected = all.find((entry) => entry.id === id) ?? starters[0];
-  const [macro, setMacro] = useState(() => clone(starters[0].macro));
+  const [custom, setCustom] = useState(() => {
+    const stored = readLocal("ff-macros", []);
+    return (Array.isArray(stored) ? stored : []).filter((entry) => {
+      try { validateMacro(entry.macro); return typeof entry.id === "string"; } catch { return false; }
+    });
+  });
+  const all = custom;
+  const [id, setId] = useState(() => custom[0]?.id ?? null);
+  const selected = all.find((entry) => entry.id === id) ?? null;
+  const [macro, setMacro] = useState(() => custom[0] ? clone(custom[0].macro) : null);
   const [path, setPath] = useState(null);
   const [view, setView] = useState("builder");
   const [builderPane, setBuilderPane] = useState("blocks");
@@ -71,15 +76,15 @@ function App() {
   const fileRef = useRef(null);
   const vision = useRef(new Vision());
   const native = isTauri();
-  const locked = Boolean(selected.locked);
-  const focused = path ? get(macro, path) : null;
+  const locked = Boolean(selected?.locked);
+  const focused = path && macro ? get(macro, path) : null;
   const installed = (item) => custom.some((entry) => entry.sourceId === item.id);
   const record = (kind, message) => {
     setStatus(message);
     setLogs((current) => [...current.slice(-199), { time: formatTime(), kind, message }]);
   };
 
-  useEffect(() => { setMacro(clone(selected.macro)); setPath(null); setBuilderPane("blocks"); }, [id]);
+  useEffect(() => { setMacro(selected ? clone(selected.macro) : null); setPath(null); setBuilderPane("blocks"); }, [id]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
@@ -115,11 +120,12 @@ function App() {
     } catch (error) { record("error", String(error)); }
   }
   function mutate(fn) {
-    if (locked || running) return;
+    if (!macro || locked || running) return;
     const copy = clone(macro); fn(copy); setMacro(copy);
   }
   function save() {
     try {
+      if (!macro) throw new Error("Create or install a macro first");
       validateMacro(macro);
       if (locked) return record("warning", "Duplicate the locked starter to edit it.");
       if (starters.some((entry) => entry.id === id)) return duplicate(macro, `${macro.name} custom`);
@@ -138,6 +144,12 @@ function App() {
     const entry = { id: crypto.randomUUID(), name: macro.name, macro };
     setCustom((entries) => [...entries, entry]); setId(entry.id); setView("builder");
     record("success", "New flow created");
+  }
+  function deleteSelected() {
+    if (!selected || selected.locked || running) return;
+    const next = custom.filter((entry) => entry.id !== id);
+    setCustom(next); setId(next[0]?.id ?? null);
+    record("info", "Macro removed from your library");
   }
   async function imported(file) {
     try {
@@ -224,7 +236,7 @@ function App() {
   function finishInstall() {
     if (!installCandidate || scanStep < 3) return;
     const { item, macro: checked } = installCandidate;
-    const entry = { id: crypto.randomUUID(), name: checked.name, sourceId: item.id, macro: checked };
+    const entry = { id: crypto.randomUUID(), name: checked.name, sourceId: item.id, locked: item.id === "roblox-afk", macro: checked };
     setCustom((entries) => [...entries, entry]); setId(entry.id);
     updateStat(item.id, { downloads: (marketStats[item.id]?.downloads ?? 0) + 1 });
     setInstallCandidate(null); setView("builder");
@@ -251,7 +263,7 @@ function App() {
       };
       runner.current = new Runner(bridge, vision.current, (type) => {
         setStep(labels[type]); setLogs((entries) => [...entries.slice(-199), { time: formatTime(), kind: "step", message: labels[type] }]);
-      }, { humanize });
+      }, { humanize, onMatch: (type, hit) => record("success", `${labels[type]} matched at ${hit.x}, ${hit.y}${hit.confidence == null ? "" : ` · ${hit.confidence}% confidence`}`) });
       record("info", `Starting ${macro.name} in 3 seconds · F8 to stop`);
       let focusWarning = false;
       const heartbeat = setInterval(() => bridge.check().catch((error) => {
@@ -268,13 +280,13 @@ function App() {
     }
   }
   function selectMacro(nextId) { if (!running) { setId(nextId); setView("builder"); } }
-  const actions = { macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock,
+  const actions = { macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, deleteSelected, record,
     builderPane, setBuilderPane, run, create, fileRef, imported, id, selected };
   return (
     <div className="studio">
       <aside className="sidebar">
         <button className="brand" onClick={() => setView("builder")} aria-label="Flowforge Studio home">
-          <span className="brandmark"><Command size={19} /></span><span>flowforge</span><small>STUDIO</small>
+          <span className="brandmark"><img src={logoUrl} alt="" /></span><span>flowforge</span><small>STUDIO</small>
         </button>
         <div className="side-label">WORKSPACE <button title="New macro" disabled={running} onClick={create}><Plus size={16} /></button></div>
         <nav className="side-nav" aria-label="Studio views">
@@ -284,6 +296,7 @@ function App() {
         </nav>
         <div className="side-label library-title">YOUR LIBRARY</div>
         <div className="macrolist" aria-label="Saved macros">
+          {!all.length && <p className="library-empty">No macros yet. Create one or explore the marketplace.</p>}
           {all.map((entry) => <button key={entry.id} className={id === entry.id ? "selected" : ""} disabled={running}
             onClick={() => selectMacro(entry.id)}><span className={`miniicon ${colors[entry.macro.blocks[0]?.type] ?? "blue"}`}>
               {entry.id === "ad-skipper" ? <ScanLine size={15} /> : <Layers size={15} />}</span><span>{entry.name}</span>{entry.locked && <Lock size={12} />}</button>)}
@@ -299,7 +312,7 @@ function App() {
         {!native && <div className="notice">Browser preview · Window capture and input require the Windows app.</div>}
         {updated && <div className="notice">Version {updated} is available. <a href={`https://github.com/${config.repository}/releases/latest`} target="_blank" rel="noreferrer">View release ↗</a></div>}
         <div className="view-frame" key={view}>
-          {view === "builder" && <BuilderView {...actions} />}
+          {view === "builder" && (macro ? <BuilderView {...actions} /> : <EmptyBuilder create={create} openMarket={() => { setView("marketplace"); loadMarketplace(); }} importFile={() => fileRef.current?.click()} />)}
           {view === "marketplace" && <MarketplaceView catalog={catalog} marketStatus={marketStatus} marketSearch={marketSearch} setMarketSearch={setMarketSearch}
             stats={marketStats} updateStat={updateStat} prepareInstall={prepareInstall} installed={installed} busy={busy} loadMarketplace={loadMarketplace} setReportItem={setReportItem} />}
           {view === "run" && <RunView macro={macro} windows={windows} target={target} setTarget={setTarget} refreshWindows={refreshWindows}
@@ -325,14 +338,40 @@ function App() {
   );
 }
 
-function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, builderPane, setBuilderPane, run, id, selected }) {
+function EmptyBuilder({ create, openMarket, importFile }) {
+  return <section className="empty-builder" aria-label="Empty macro workspace"><div className="empty-orbit"><img src={logoUrl} alt="" /></div>
+    <small>YOUR WORKSPACE</small><h1>A blank canvas. All yours.</h1><p>Create a flow from blocks, import your JSON, or bring one in from the community. Nothing is preinstalled.</p>
+    <div className="empty-actions"><button className="primary" onClick={create}><Plus size={16} /> Create a macro</button>
+      <button className="secondary" onClick={openMarket}><Store size={16} /> Browse marketplace</button>
+      <button className="ghost" onClick={importFile}><Upload size={16} /> Import JSON</button></div></section>;
+}
+function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, deleteSelected, record, builderPane, setBuilderPane, run, id, selected }) {
   const clicker = id === "auto-clicker" || selected.sourceId === "auto-clicker";
+  async function uploadTemplate(file) {
+    if (!file || !path) return;
+    try {
+      if (!file.type.startsWith("image/") || file.size > 262144) throw new Error("Choose an image under 256 KB");
+      const bitmap = await createImageBitmap(file);
+      if (bitmap.width > 128 || bitmap.height > 128 || !bitmap.width || !bitmap.height) { bitmap.close(); throw new Error("Crop the template to 128 × 128 pixels or smaller"); }
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width; canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d"); ctx.drawImage(bitmap, 0, 0); bitmap.close();
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      if (!pixels.some((channel, i) => i % 4 === 3 && channel >= 128)) throw new Error("The template has no visible pixels");
+      const data = canvas.toDataURL("image/png");
+      if (data.length > 200000) throw new Error("Compressed template exceeds 150 KB");
+      const selectedPath = [...path];
+      mutate((copy) => { const block = get(copy, selectedPath); if (block.type === "findImage") block.template = data; });
+      record("success", `Template ready · ${canvas.width} × ${canvas.height} pixels`);
+    } catch (error) { record("error", error.message); }
+  }
   return <section className="builder-view" aria-label="Visual macro builder">
     <div className="view-heading"><div><small>VISUAL AUTOMATION</small><input className="flowname" aria-label="Macro name" disabled={locked || running} value={macro.name}
       onChange={(event) => mutate((copy) => { copy.name = event.target.value; })} /><p>{locked ? "Locked starter · duplicate to make changes" : "Create your workflow, block by block."}</p></div>
       <div className="heading-actions"><button className="ghost" title="Duplicate macro" disabled={running} onClick={() => duplicate()}><Copy size={16} /> Duplicate</button>
         <button className="ghost" title="Export JSON" onClick={() => downloadJSON(macro)}><Download size={16} /> Export</button>
         <button className="ghost" title="Save macro" disabled={locked || running} onClick={save}><Save size={16} /> Save</button>
+        {!locked && <button className="ghost danger" title="Delete macro" disabled={running} onClick={deleteSelected}><Trash2 size={16} /> Delete</button>}
         <button className="primary" onClick={run} disabled={running}><Play size={15} fill="currentColor" /> Run flow</button></div></div>
     <div className="builder-tabs"><button className={builderPane === "blocks" ? "selected" : ""} onClick={() => setBuilderPane("blocks")}>Block builder</button>
       {clicker && <button className={builderPane === "clicker" ? "selected" : ""} onClick={() => setBuilderPane("clicker")}>Clicker settings</button>}</div>
@@ -345,21 +384,27 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
       <button className="secondary" onClick={save}>{id === "auto-clicker" ? "Save configured copy" : "Save changes"}</button></div> :
       <div className="builder-grid surface"><div className="palette"><small>BLOCK LIBRARY</small>
         <div className="palette-group"><strong>CONTROL</strong>{["loop", "ifFound", "wait"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        <div className="palette-group"><strong>INPUT & ACTIONS</strong>{["move", "click", "key", "text", "drag"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        <div className="palette-group"><strong>VISION</strong>{["findText", "findColor"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
+        <div className="palette-group"><strong>INPUT & ACTIONS</strong>{["move", "click", "key", "keyChord", "text", "drag"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
+        <div className="palette-group"><strong>VISION</strong>{["findText", "findColor", "findImage"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
         <p>Drag into any list to nest blocks, or click to append.</p></div>
         <div className="canvas"><div className="canvaslabel"><i className="status-dot live" /> WHEN FLOW STARTS <span>{locked ? <><Lock size={12} /> LOCKED</> : "EDITABLE FLOW"}</span></div>
           <BlockList list={macro.blocks} listPath={["blocks"]} chosen={path} select={setPath} add={add} remove={remove} reorder={reorder} dropBlock={dropBlock} disabled={locked || running} />
           <div className="canvasfoot"><ShieldCheck size={15} /> F8 stops input instantly · target focus is checked continuously</div></div>
         <div className="inspector"><small>BLOCK SETTINGS</small><h3>{focused ? labels[focused.type] : "Select a block"}</h3>
-          {focused ? <><div className="inspector-fields">{Object.entries(focused).filter(([key, value]) => key !== "type" && !Array.isArray(value)).map(([key, value]) =>
+          {focused ? <><div className="inspector-fields">{Object.entries(focused).filter(([key, value]) => key !== "type" && key !== "template" && !Array.isArray(value)).map(([key, value]) =>
             <label key={key}>{key.replace(/([A-Z])/g, " $1")}{typeof value === "boolean" ? <input type="checkbox" disabled={locked || running} checked={value}
               onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.checked; })} /> : key === "button" ?
               <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}><option value="left">Left</option><option value="right">Right</option></select> :
               <input disabled={locked || running} type={typeof value === "number" ? "number" : key === "color" ? "color" : "text"} value={value}
                 onChange={(event) => mutate((copy) => { get(copy, path)[key] = typeof value === "number" ? Number(event.target.value) : event.target.value; })} />}</label>)}</div>
+            {focused.type === "findImage" && <div className="template-field"><label className="secondary" htmlFor="template-upload"><ImageIcon size={15} /> {focused.template ? "Replace image" : "Upload image template"}</label>
+              <input id="template-upload" type="file" accept="image/png,image/jpeg,image/webp" disabled={locked || running} onChange={(event) => { uploadTemplate(event.target.files?.[0]); event.target.value = ""; }} />
+              {focused.template && <img src={focused.template} alt="Template preview" />}
+              <p>Crop tightly around the object. Maximum 128 × 128 pixels. The match uses the template's original size.</p></div>}
             {focused.type === "loop" && <p>0 repeats indefinitely. Set a positive count for a finite loop.</p>}
-            {focused.type.startsWith("find") && <p>Scans visible pixels. The interval defaults to 500 ms; OCR may take longer.</p>}</> : <p>Choose a block to edit its values. Drag blocks into the canvas and nested branches.</p>}
+            {focused.type === "move" && <p>Smooth movement eases between endpoints. Duration is in milliseconds; humanization adds small path and timing variation.</p>}
+            {focused.type === "keyChord" && <p>Separate simultaneous keys with +, for example w+Shift.</p>}
+            {focused.type.startsWith("find") && <p>Scans visible pixels. The interval defaults to 500 ms; recognition may take longer.</p>}</> : <p>Choose a block to edit its values. Drag blocks into the canvas and nested branches.</p>}
           <div className="inspector-foot"><ShieldCheck size={20} /><strong>Your desktop stays yours.</strong><p>Input stops when the chosen window loses focus.</p></div></div></div>}
   </section>;
 }
@@ -392,13 +437,13 @@ function RunView({ macro, windows, target, setTarget, refreshWindows, humanize, 
   useEffect(() => { logEnd.current?.scrollIntoView({ block: "end" }); }, [logs]);
   return <section className="run-view" aria-label="Run and execution dashboard"><div className="view-heading"><div><small>LIVE CONTROL CENTER</small><h1>Run with confidence.</h1><p>Choose a target, monitor each step, and stop at any time.</p></div>
     <span className={`run-badge ${running ? "running" : ""}`}><i className={`status-dot ${running ? "live" : ""}`} /> {running ? "Running" : "Idle"}</span></div>
-    <div className="run-grid"><div className="run-controls surface"><h2>Execution settings</h2><p>Selected flow: <strong>{macro.name}</strong></p>
+    <div className="run-grid"><div className="run-controls surface"><h2>Execution settings</h2><p>Selected flow: <strong>{macro?.name ?? "No macro selected"}</strong></p>
       <label htmlFor="target-window">TARGET WINDOW</label><div className="target-select"><select id="target-window" disabled={running} value={target} onChange={(event) => setTarget(event.target.value)}>
         <option value="global">Global Desktop Input</option>{windows.map((window) => <option key={window.id} value={window.id}>{window.title} · PID {window.pid}</option>)}</select>
         <button aria-label="Refresh windows" title="Refresh windows" disabled={running} onClick={refreshWindows}><RefreshCw size={16} /></button></div>
       <div className="safety-note"><ShieldCheck size={19} /><div><strong>{target === "global" ? "Global mode" : "Focus protection active"}</strong><p>{target === "global" ? "Input can reach your entire desktop. Choose a window for focus protection." : "Input stops as soon as this window loses focus."}</p></div></div>
       <label className="toggle-row"><input type="checkbox" disabled={running} checked={humanize} onChange={(event) => setHumanize(event.target.checked)} /><span>Vary timing and mouse path slightly</span></label>
-      <div className="run-buttons">{running ? <button className="stop" onClick={stop}><Square size={16} fill="currentColor" /> Stop · F8</button> : <button className="primary" onClick={run} disabled={!native}><Play size={16} fill="currentColor" /> Start flow</button>}</div>
+      <div className="run-buttons">{running ? <button className="stop" onClick={stop}><Square size={16} fill="currentColor" /> Stop · F8</button> : <button className="primary" onClick={run} disabled={!native || !macro}><Play size={16} fill="currentColor" /> Start flow</button>}</div>
       <p className="shortcut">F8 · Emergency stop from anywhere</p></div>
       <div className="run-monitor surface"><div className="monitor-header"><div><small>LIVE ACTIVITY</small><h2>Execution log</h2></div><span>{step || status}</span></div>
         <div className="terminal" role="log" aria-live="polite">{logs.map((entry, index) => <div className={`log-line ${entry.kind}`} key={`${entry.time}-${index}`}><time>{entry.time}</time><span>{entry.kind.toUpperCase()}</span><p>{entry.message}</p></div>)}<div ref={logEnd} /></div></div></div></section>;
@@ -467,10 +512,14 @@ function BlockList({
                         : `${b.count} times`
                       : b.type === "findText"
                         ? `“${b.text}”`
+                        : b.type === "findImage"
+                          ? b.template ? `${b.confidence}% match` : "upload image"
                         : b.type === "click"
                           ? b.button
                           : b.type === "key"
                             ? b.key
+                          : b.type === "keyChord"
+                            ? b.keys
                           : b.type === "text"
                             ? b.value.slice(0, 18)
                             : b.type === "move"

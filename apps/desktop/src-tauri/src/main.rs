@@ -33,7 +33,7 @@ enum InputEvent {
  #[serde(rename="key")]Key{key:String,action:String,#[serde(rename="holdMs")]hold_ms:u32},
  #[serde(rename="text")]Text{value:String},
 }
-fn key(name:&str)->Result<Key,String>{Ok(match name {"Space"=>Key::Space,"Enter"=>Key::Return,"Tab"=>Key::Tab,"Escape"=>Key::Escape,"ArrowUp"=>Key::UpArrow,"ArrowDown"=>Key::DownArrow,"ArrowLeft"=>Key::LeftArrow,"ArrowRight"=>Key::RightArrow,s if s.len()==1&&s.chars().all(|c|c.is_ascii_alphanumeric())=>Key::Unicode(s.chars().next().unwrap()),_=>return Err("Unsupported key".into())})}
+fn key(name:&str)->Result<Key,String>{Ok(match name {"Space"=>Key::Space,"Enter"=>Key::Return,"Tab"=>Key::Tab,"Escape"=>Key::Escape,"Shift"=>Key::Shift,"Control"=>Key::Control,"Alt"=>Key::Alt,"ArrowUp"=>Key::UpArrow,"ArrowDown"=>Key::DownArrow,"ArrowLeft"=>Key::LeftArrow,"ArrowRight"=>Key::RightArrow,s if s.len()==1&&s.chars().all(|c|c.is_ascii_alphanumeric())=>Key::Unicode(s.chars().next().unwrap()),_=>return Err("Unsupported key".into())})}
 fn button(name:&str)->Result<Button,String>{match name{"left"=>Ok(Button::Left),"right"=>Ok(Button::Right),_=>Err("Unsupported mouse button".into())}}
 fn direction(action:&str)->Result<Direction,String>{match action{"down"=>Ok(Direction::Press),"up"=>Ok(Direction::Release),_=>Err("Unsupported input direction".into())}}
 fn lock(n:&Native)->Result<std::sync::MutexGuard<'_,RunState>,String>{n.0.lock().map_err(|_|"Input state unavailable".into())}

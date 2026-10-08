@@ -40,26 +40,34 @@ export class Runner {
     }
   }
   async move(b) {
-    if (!this.options.humanize || !this.bridge.position) {
-      await this.bridge.input(b);
+    if ((!b.smooth && !this.options.humanize) || !this.bridge.position) {
+      const { smooth, durationMs, ...event } = b;
+      await this.bridge.input(event);
       return;
     }
     const start = await this.bridge.position(Boolean(b.screen));
     const end = b.relative ? { x: start.x + b.x, y: start.y + b.y } : b;
-    const bend = (Math.random() * 2 - 1) * 2;
-    for (let i = 1; i <= 8; i++) {
+    const distance = Math.hypot(end.x - start.x, end.y - start.y);
+    const duration = Math.max(40, Math.min(10000, b.durationMs ?? 130)) *
+      (this.options.humanize ? 0.9 + Math.random() * 0.2 : 1);
+    const steps = Math.max(8, Math.min(240, Math.ceil(duration / 16), Math.ceil(distance / 2)));
+    const bend = this.options.humanize ? (Math.random() * 2 - 1) * Math.min(3, distance * 0.05) : 0;
+    const nx = distance ? -(end.y - start.y) / distance : 0;
+    const ny = distance ? (end.x - start.x) / distance : 0;
+    for (let i = 1; i <= steps; i++) {
       await this.check();
-      const t = i / 8;
+      const t = i / steps;
+      const eased = t * t * (3 - 2 * t);
+      const deviation = i === steps ? 0 : Math.sin(t * Math.PI) * bend +
+        (this.options.humanize ? (Math.random() - 0.5) * 0.9 : 0);
       await this.bridge.input({
         type: "move",
-        x: Math.round(start.x + (end.x - start.x) * t),
-        y: Math.round(
-          start.y + (end.y - start.y) * t + Math.sin(t * Math.PI) * bend,
-        ),
+        x: Math.round(start.x + (end.x - start.x) * eased + nx * deviation),
+        y: Math.round(start.y + (end.y - start.y) * eased + ny * deviation),
         relative: false,
         screen: Boolean(b.screen),
       });
-      await this.wait(8 + Math.random() * 8);
+      if (i < steps) await this.wait(duration / steps);
     }
   }
   async blocks(blocks) {
@@ -93,17 +101,27 @@ export class Runner {
             await this.bridge.input({ ...b, action: "up" }).catch(() => {});
           }
           break;
+        case "keyChord": {
+          const held = [];
+          try {
+            for (const key of b.keys.split("+")) {
+              await this.check();
+              await this.bridge.input({ type: "key", key, action: "down", holdMs: b.holdMs });
+              held.push(key);
+            }
+            await this.wait(b.holdMs);
+          } finally {
+            for (const key of held.reverse())
+              await this.bridge.input({ type: "key", key, action: "up", holdMs: 0 }).catch(() => {});
+          }
+          break;
+        }
         case "text":
           await this.bridge.input(b);
           break;
         case "drag":
           try {
-            await this.bridge.input({
-              type: "move",
-              x: b.x,
-              y: b.y,
-              relative: false,
-            });
+            await this.move({ type: "move", x: b.x, y: b.y, relative: false, smooth: true, durationMs: 200 });
             await this.bridge.input({
               type: "button",
               button: "left",
@@ -112,10 +130,11 @@ export class Runner {
             const steps = Math.ceil(b.duration / 16);
             for (let i = 1; i <= steps; i++) {
               await this.check();
+              const t = i / steps, eased = t * t * (3 - 2 * t);
               await this.bridge.input({
                 type: "move",
-                x: Math.round(b.x + ((b.toX - b.x) * i) / steps),
-                y: Math.round(b.y + ((b.toY - b.y) * i) / steps),
+                x: Math.round(b.x + (b.toX - b.x) * eased),
+                y: Math.round(b.y + (b.toY - b.y) * eased),
                 relative: false,
               });
               await this.wait(b.duration / steps);
@@ -136,7 +155,9 @@ export class Runner {
           await this.blocks(this.found ? b.then : b.else);
           break;
         case "findText":
-        case "findColor": {
+        case "findColor":
+        case "findImage": {
+          if (b.type === "findImage" && !b.template) throw new Error("Upload an image template before running this block");
           this.found = false;
           const end = Date.now() + b.timeout;
           do {
@@ -150,9 +171,10 @@ export class Runner {
             await this.check();
             if (hit) {
               this.found = true;
+              this.options.onMatch?.(b.type, hit);
               if (b.click) {
-                await this.bridge.input({
-                  type: "move",
+                await this.move({
+                  type: "move", smooth: true, durationMs: 200,
                   x: frame.x + hit.x,
                   y: frame.y + hit.y,
                   relative: false,

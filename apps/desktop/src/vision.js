@@ -1,6 +1,18 @@
 import { createWorker } from "tesseract.js";
+import { matchTemplate } from "./template-match.js";
+async function pixels(source) {
+  const img = new Image();
+  img.src = source;
+  await img.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width; canvas.height = img.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  return { width: img.width, height: img.height, data: ctx.getImageData(0, 0, img.width, img.height).data };
+}
 export class Vision {
   workerPromise = null;
+  templates = new Map();
   worker() {
     return (this.workerPromise ??= createWorker("eng", 1, {
       workerPath: new URL(
@@ -20,6 +32,18 @@ export class Vision {
   }
   async find(frame, b, signal) {
     if (signal.aborted) throw new Error("Stopped");
+    if (b.type === "findImage") {
+      if (!b.template) throw new Error("Upload an image template first");
+      if (!this.templates.has(b.template)) {
+        if (this.templates.size > 8) this.templates.clear();
+        this.templates.set(b.template, pixels(b.template));
+      }
+      const template = await this.templates.get(b.template);
+      if (template.width > 128 || template.height > 128) throw new Error("Template must be at most 128 × 128 pixels");
+      const screenshot = await pixels(frame.data);
+      if (signal.aborted) throw new Error("Stopped");
+      return matchTemplate(screenshot, template, b.confidence, signal);
+    }
     if (b.type === "findText") {
       const worker = await this.worker();
       if (signal.aborted) throw new Error("Stopped");
@@ -55,16 +79,9 @@ export class Vision {
       }
       return null;
     }
-    const img = new Image();
-    img.src = frame.data;
-    await img.decode();
+    const img = await pixels(frame.data);
     if (signal.aborted) throw new Error("Stopped");
-    const canvas = document.createElement("canvas");
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0);
-    const d = ctx.getImageData(0, 0, img.width, img.height).data;
+    const d = img.data;
     const rgb = [1, 3, 5].map((i) => parseInt(b.color.slice(i, i + 2), 16));
     for (let y = 0; y < img.height; y++)
       for (let x = 0; x < img.width; x++) {
@@ -75,6 +92,7 @@ export class Vision {
     return null;
   }
   async dispose() {
+    this.templates.clear();
     if (this.workerPromise) {
       const worker = await this.workerPromise.catch(() => null);
       await worker?.terminate();

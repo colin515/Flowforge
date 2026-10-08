@@ -1,8 +1,9 @@
 export const defaults = {
   wait: { type: "wait", ms: 500, jitter: 0 },
-  move: { type: "move", x: 4, y: 0, relative: true },
+  move: { type: "move", x: 4, y: 0, relative: true, smooth: true, durationMs: 350 },
   click: { type: "click", button: "left" },
   key: { type: "key", key: "Space", holdMs: 50 },
+  keyChord: { type: "keyChord", keys: "w+Shift", holdMs: 180 },
   text: { type: "text", value: "Hello, world!" },
   drag: { type: "drag", x: 200, y: 200, toX: 400, toY: 200, duration: 500 },
   findText: {
@@ -20,6 +21,10 @@ export const defaults = {
     interval: 500,
     timeout: 5000,
     click: false,
+  },
+  findImage: {
+    type: "findImage", template: "", confidence: 85, interval: 500,
+    timeout: 10000, click: true,
   },
   loop: { type: "loop", count: 10, body: [] },
   ifFound: { type: "ifFound", then: [], else: [] },
@@ -103,6 +108,27 @@ export const starters = [
       ],
     },
   },
+  {
+    id: "da-hood-mobility",
+    name: "Da Hood Mobility Flow",
+    locked: false,
+    description: "Configurable movement key chords and short bursts for Roblox Da Hood. Keep its window focused and review game rules.",
+    icon: "pointer",
+    category: "Gaming",
+    macro: {
+      version: 1,
+      name: "Da Hood Mobility Flow",
+      blocks: [{
+        type: "loop", count: 0, body: [
+          { type: "keyChord", keys: "w+Shift", holdMs: 180 },
+          { type: "wait", ms: 80, jitter: 30 },
+          { type: "keyChord", keys: "a+Shift", holdMs: 110 },
+          { type: "keyChord", keys: "d+Shift", holdMs: 110 },
+          { type: "wait", ms: 120, jitter: 40 },
+        ],
+      }],
+    },
+  },
 ];
 const isObject = (v) => v && typeof v === "object" && !Array.isArray(v);
 export function validateMacro(m) {
@@ -134,7 +160,7 @@ export function validateMacro(m) {
         fail("Unknown block or too many blocks");
       keys(b, Object.keys(defaults[b.type]));
       for (const k of Object.keys(defaults[b.type]))
-        if (!(k in b)) fail(`Missing ${k}`);
+        if (!(k in b) && !(b.type === "move" && ["smooth", "durationMs"].includes(k))) fail(`Missing ${k}`);
       switch (b.type) {
         case "wait":
           num(b.ms, 10, 3600000, "wait");
@@ -146,13 +172,15 @@ export function validateMacro(m) {
           num(b.x, -32768, 32768, "x");
           num(b.y, -32768, 32768, "y");
           if (typeof b.relative !== "boolean") fail("relative must be boolean");
+          if (b.smooth !== undefined && typeof b.smooth !== "boolean") fail("smooth must be boolean");
+          if (b.durationMs !== undefined) num(b.durationMs, 40, 10000, "movement duration");
           break;
         case "click":
           if (!["left", "right"].includes(b.button)) fail("Invalid button");
           break;
         case "key":
           if (
-            !/^(Space|Enter|Tab|Escape|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/.test(
+              !/^(Space|Enter|Tab|Escape|Shift|Control|Alt|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/.test(
               b.key,
             )
           )
@@ -160,6 +188,14 @@ export function validateMacro(m) {
           num(b.holdMs, 0, 5000, "hold");
           if (!Number.isInteger(b.holdMs)) fail("Hold must be an integer");
           break;
+        case "keyChord": {
+          if (typeof b.keys !== "string") fail("Invalid key chord");
+          const parts = b.keys.split("+");
+          if (parts.length < 2 || parts.length > 4 || new Set(parts).size !== parts.length ||
+            parts.some((part) => !/^(Space|Enter|Tab|Escape|Shift|Control|Alt|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/.test(part))) fail("Invalid key chord");
+          num(b.holdMs, 10, 5000, "chord hold");
+          break;
+        }
         case "text":
           if (typeof b.value !== "string" || !b.value.length || b.value.length > 1000 || b.value.includes("\0"))
             fail("Text must contain 1–1000 characters without NUL bytes");
@@ -184,6 +220,15 @@ export function validateMacro(m) {
             if (!/^#[0-9a-f]{6}$/i.test(b.color)) fail("Invalid color");
             num(b.tolerance, 0, 80, "tolerance");
           }
+          num(b.interval, 100, 10000, "scan interval");
+          num(b.timeout, 100, 60000, "timeout");
+          if (typeof b.click !== "boolean") fail("click must be boolean");
+          break;
+        case "findImage":
+          if (typeof b.template !== "string" ||
+            !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(b.template) || b.template.length > 200000)
+            fail("Upload a PNG template under 150 KB");
+          num(b.confidence, 0, 100, "confidence");
           num(b.interval, 100, 10000, "scan interval");
           num(b.timeout, 100, 60000, "timeout");
           if (typeof b.click !== "boolean") fail("click must be boolean");

@@ -6,6 +6,7 @@ import {
   parseMacro,
 } from "../packages/shared/macros.js";
 import { Runner } from "../packages/shared/runner.js";
+import { matchTemplate } from "../apps/desktop/src/template-match.js";
 test("starter files validate", () =>
   starters.forEach((s) => validateMacro(s.macro)));
 test("reject executable fields, unknown operations, malformed nesting and values", () => {
@@ -107,7 +108,7 @@ test("humanized movement preserves the exact intended endpoint", async () => {
   );
   r.wait = async () => {};
   await r.run({ blocks: [{ type: "move", x: 20, y: -30, relative: true }] });
-  assert.equal(calls.length, 8);
+  assert.ok(calls.length >= 8);
   assert.deepEqual(calls.at(-1), {
     type: "move",
     x: 120,
@@ -115,6 +116,39 @@ test("humanized movement preserves the exact intended endpoint", async () => {
     relative: false,
     screen: false,
   });
+});
+test("new catalog starter uses valid key chords", () => {
+  assert.equal(starters.length, 4);
+  assert.equal(starters.find((s) => s.id === "da-hood-mobility").macro.blocks[0].body[0].keys, "w+Shift");
+  assert.throws(() => validateMacro({ version: 1, name: "Bad chord", blocks: [{ type: "keyChord", keys: "a+;", holdMs: 50 }] }));
+});
+test("smooth movement interpolates and ends at the intended endpoint", async () => {
+  const inputs = [];
+  const runner = new Runner({ check: async () => {}, position: async () => ({ x: 10, y: 10 }), input: async (b) => inputs.push(b), release: async () => {} }, {});
+  runner.wait = async () => {};
+  await runner.run({ blocks: [{ type: "move", x: 30, y: 20, relative: false, smooth: true, durationMs: 200 }] });
+  assert.ok(inputs.length > 8);
+  assert.ok(inputs.some((point) => point.x > 10 && point.x < 30));
+  assert.deepEqual([inputs.at(-1).x, inputs.at(-1).y], [30, 20]);
+});
+test("key chords press together and release in reverse order", async () => {
+  const events = [];
+  const runner = new Runner({ check: async () => {}, input: async (b) => events.push(`${b.key}:${b.action}`), release: async () => {} }, {});
+  runner.wait = async () => {};
+  await runner.run({ blocks: [{ type: "keyChord", keys: "w+Shift", holdMs: 100 }] });
+  assert.deepEqual(events, ["w:down", "Shift:down", "Shift:up", "w:up"]);
+});
+test("image template matching returns the center and a measured confidence", async () => {
+  const frame = { width: 9, height: 9, data: new Uint8ClampedArray(9 * 9 * 4) };
+  const template = { width: 2, height: 2, data: new Uint8ClampedArray(2 * 2 * 4) };
+  for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) {
+    const p = (y * 2 + x) * 4, q = ((y + 4) * 9 + x + 3) * 4;
+    template.data.set([230, 30 + x * 40, 70 + y * 50, 255], p);
+    frame.data.set([230, 30 + x * 40, 70 + y * 50, 255], q);
+  }
+  const match = await matchTemplate(frame, template, 99, new AbortController().signal);
+  assert.deepEqual(match, { x: 4, y: 5, confidence: 100 });
+  await assert.rejects(matchTemplate(frame, template, 99, AbortSignal.abort()), /Stopped/);
 });
 test("stop during vision prevents any subsequent click", async () => {
   const calls = [];
