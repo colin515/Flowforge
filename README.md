@@ -7,11 +7,10 @@ landing page. Tauri 2 + Rust + React power the desktop; React/Vite and CSS power
 the GitHub Pages site. Tesseract.js supplies open-source OCR. Plain CSS keeps the
 styling dependency footprint small; Lucide provides consistent SVG icons.
 
-**Status:** both frontend production builds and shared interpreter tests pass.
-The native Windows source has not been compiled or run in this Linux workspace.
-The included Windows workflow builds an NSIS `.exe` installer. Treat the project
-as a starter until that build and the Windows acceptance checks pass. The
-marketplace is a working browser-local demo, not a connected community service.
+**Status:** both website production builds, shared interpreter tests, the native
+Rust check and the Windows NSIS installer build pass in GitHub Actions. Release
+`v0.1.0` contains the downloadable `.exe` installer. The marketplace is a
+working browser-local demo, not a connected community service.
 
 ## Included
 
@@ -80,8 +79,9 @@ use `npm run dev -w @flowforge/web -- --host 127.0.0.1`.
 - Marketplace: https://colin515.github.io/Flowforge/marketplace/
 - Latest Windows release: https://github.com/colin515/Flowforge/releases/latest
 
-The Pages workflow builds both web entries and publishes the landing page,
-marketplace, catalog and downloadable JSON macros. The Windows workflow validates
+The Pages workflow publishes two distinct web entries: the landing page at the
+site root and the marketplace under `/marketplace/`, including its catalog and
+downloadable JSON macros. The Windows workflow validates
 Rust and creates the NSIS installer. Release tags use the matching app version,
 for example `v0.1.0`.
 
