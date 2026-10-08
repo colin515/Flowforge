@@ -1,5 +1,3 @@
-npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
-.github/workflows/windows.yml 25ms (unchanged)
 name: Windows build and release
 on:
   push:
