@@ -1,5 +1,6 @@
 import { createWorker } from "tesseract.js";
 import { matchTemplate } from "./template-match.js";
+import { checkPixel } from "./pixel-check.js";
 async function pixels(source) {
   const img = new Image();
   img.src = source;
@@ -32,6 +33,11 @@ export class Vision {
   }
   async find(frame, b, signal) {
     if (signal.aborted) throw new Error("Stopped");
+    if (b.type === "checkPixel") {
+      const image = await pixels(frame.data);
+      if (signal.aborted) throw new Error("Stopped");
+      return checkPixel(image, b.x, b.y, b.color, b.tolerance);
+    }
     if (b.type === "findImage") {
       if (!b.template) throw new Error("Upload an image template first");
       if (!this.templates.has(b.template)) {

@@ -43,6 +43,8 @@ function preferredTheme() {
     : "light";
 }
 function App() {
+  const release = `https://github.com/${config.repository}/releases/latest`;
+  const [installerUrl, setInstallerUrl] = useState(release);
   const [theme, setTheme] = useState(saved("ff-theme", preferredTheme()));
   const [items, setItems] = useState(saved("ff-community", []));
   const [stats, setStats] = useState(saved("ff-stats", {}));
@@ -61,6 +63,19 @@ function App() {
       ?.setAttribute("content", theme === "dark" ? "#1c1c1e" : "#f5f5f7");
     localStorage.setItem("ff-theme", JSON.stringify(theme));
   }, [theme]);
+  useEffect(() => {
+    if (config.repository.startsWith("YOUR_")) return;
+    const controller = new AbortController();
+    fetch(`https://api.github.com/repos/${config.repository}/releases/latest`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Release unavailable")))
+      .then((data) => {
+        const installer = data.assets?.find((asset) =>
+          /^Flowforge_.*_x64-setup\.exe$/i.test(asset.name) &&
+          asset.browser_download_url?.startsWith(`https://github.com/${config.repository}/releases/download/`));
+        if (installer) setInstallerUrl(installer.browser_download_url);
+      }).catch(() => {});
+    return () => controller.abort();
+  }, []);
   useEffect(() => {
     localStorage.setItem("ff-community", JSON.stringify(items));
     localStorage.setItem("ff-stats", JSON.stringify(stats));
@@ -125,7 +140,6 @@ function App() {
     };
   }, [modal]);
   const configured = !config.repository.startsWith("YOUR_");
-  const release = `https://github.com/${config.repository}/releases/latest`;
   const all = [...starters, ...items];
   const mutate = (id, v) =>
     setStats((s) => ({ ...s, [id]: { ...s[id], ...v } }));
@@ -170,7 +184,7 @@ function App() {
       </div>
       <div className="markettoolbar">
         <div className="tabs">
-          {["All", "Utility", "Productivity", "Vision", "Gaming"].map((v) => (
+          {["All", "Utility", "Productivity", "Vision", "Gaming", "AI"].map((v) => (
             <button
               key={v}
               className={v === filter ? "selected" : ""}
@@ -334,7 +348,7 @@ function App() {
           >
             {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
           </button>
-          <a className="navdownload" href={configured ? release : "#download"}>
+          <a className="navdownload" href={configured ? installerUrl : "#download"}>
             Get Flowforge <ArrowUpRight size={14} />
           </a>
         </div>
@@ -361,7 +375,7 @@ function App() {
               <div className="heroactions">
                 <a
                   className="primary"
-                  href={configured ? release : "#download"}
+                  href={configured ? installerUrl : "#download"}
                 >
                   <Download size={17} />
                   Download for Windows
@@ -452,7 +466,7 @@ function App() {
                     <div className="mockfooter">
                       <span className="dot" /> A simple flow. Endless time
                       saved.
-                      <span>F8 to stop</span>
+                      <span>F7 to stop</span>
                     </div>
                   </div>
                   <div className="mockinspector">
@@ -529,10 +543,10 @@ function App() {
                   <h3>Your window. Your rules.</h3>
                   <p>
                     Target a foreground app or work across your desktop. Export
-                    your flows. Stop instantly with F8.
+                    your flows. Stop instantly with F7.
                   </p>
                   <div className="keycaps">
-                    <kbd>F8</kbd>
+                    <kbd>F7</kbd>
                     <span>One key. Full control.</span>
                   </div>
                 </article>
@@ -559,7 +573,7 @@ function App() {
                 do the busywork.
               </h2>
               {configured ? (
-                <a className="primary" href={release}>
+                <a className="primary" href={installerUrl}>
                   <Download size={17} /> Get Flowforge for Windows
                 </a>
               ) : (

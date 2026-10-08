@@ -26,8 +26,17 @@ export const defaults = {
     type: "findImage", template: "", confidence: 85, interval: 500,
     timeout: 10000, click: true,
   },
+  checkPixel: { type: "checkPixel", x: 0, y: 0, color: "#ffffff", tolerance: 12, click: false },
   loop: { type: "loop", count: 10, body: [] },
+  while: { type: "while", name: "counter", operator: "<", operand: "10", mode: "while", body: [] },
   ifFound: { type: "ifFound", then: [], else: [] },
+  ifCompare: { type: "ifCompare", name: "counter", operator: ">=", operand: "10", then: [], else: [] },
+  setVar: { type: "setVar", name: "counter", value: "0" },
+  math: { type: "math", name: "counter", operator: "+", operand: "1" },
+  break: { type: "break" },
+  continue: { type: "continue" },
+  aiNavigate: { type: "aiNavigate", goal: "Find the sound settings and turn sound off", maxSteps: 8 },
+  aiIf: { type: "aiIf", prompt: "Is the sound settings menu visible?", then: [], else: [] },
 };
 export const starters = [
   {
@@ -129,6 +138,23 @@ export const starters = [
       }],
     },
   },
+  {
+    id: "local-ai-suite",
+    name: "Local AI Agent Suite",
+    locked: false,
+    description: "On-demand local vision agent with prompt-to-flow generation, screen decisions, and bounded navigation. Requires Ollama; model downloads on first use.",
+    icon: "scan",
+    category: "AI",
+    macro: {
+      version: 1,
+      name: "Local AI Agent Suite",
+      blocks: [{ type: "aiIf", prompt: "Is the sound settings menu visible?", then: [
+        { type: "aiNavigate", goal: "Turn the sound off in this application's settings", maxSteps: 8 },
+      ], else: [
+        { type: "aiNavigate", goal: "Open sound settings and turn the sound off", maxSteps: 8 },
+      ] }],
+    },
+  },
 ];
 const isObject = (v) => v && typeof v === "object" && !Array.isArray(v);
 export function validateMacro(m) {
@@ -145,7 +171,7 @@ export function validateMacro(m) {
       if (!allowed.includes(k)) fail(`Unsupported field: ${k}`);
   };
   if (!isObject(m)) fail("Expected a macro object");
-  keys(m, ["version", "name", "blocks"]);
+  keys(m, ["version", "name", "blocks", "vars"]);
   if (
     m.version !== 1 ||
     typeof m.name !== "string" ||
@@ -153,7 +179,25 @@ export function validateMacro(m) {
     m.name.length > 100
   )
     fail("Invalid macro name or version");
-  const walk = (blocks, depth) => {
+  const vars = m.vars ?? {};
+  if (!isObject(vars) || Object.keys(vars).length > 32) fail("Invalid variable list");
+  const variableName = (name) => typeof name === "string" && /^[a-zA-Z][a-zA-Z0-9_]{0,31}$/.test(name) && Object.hasOwn(vars, name);
+  for (const [name, value] of Object.entries(vars)) {
+    if (!variableName(name)) fail("Invalid variable name");
+    num(value, -1000000000, 1000000000, name);
+  }
+  const operand = (value) => {
+    if (typeof value !== "string" || !value.trim() || value.length > 40) fail("Invalid math operand");
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) num(numeric, -1000000000, 1000000000, "operand");
+    else if (!variableName(value)) fail(`Unknown variable: ${value}`);
+  };
+  const comparison = (b) => {
+    if (!variableName(b.name)) fail(`Unknown variable: ${b.name}`);
+    if (!["==", "!=", "<", "<=", ">", ">="].includes(b.operator)) fail("Invalid comparison");
+    operand(b.operand);
+  };
+  const walk = (blocks, depth, loopDepth = 0) => {
     if (depth > 8 || !Array.isArray(blocks)) fail("Invalid block nesting");
     for (const b of blocks) {
       if (++nodes > 500 || !isObject(b) || !Object.hasOwn(defaults, b.type))
@@ -233,14 +277,56 @@ export function validateMacro(m) {
           num(b.timeout, 100, 60000, "timeout");
           if (typeof b.click !== "boolean") fail("click must be boolean");
           break;
+        case "checkPixel":
+          for (const axis of ["x", "y"]) {
+            num(b[axis], 0, 32768, axis);
+            if (!Number.isInteger(b[axis])) fail("Pixel coordinates must be integers");
+          }
+          if (!/^#[0-9a-f]{6}$/i.test(b.color)) fail("Invalid color");
+          num(b.tolerance, 0, 80, "tolerance");
+          if (typeof b.click !== "boolean") fail("click must be boolean");
+          break;
         case "loop":
           num(b.count, 0, 100000, "repeat");
           if (!Number.isInteger(b.count)) fail("Repeat must be an integer");
-          walk(b.body, depth + 1);
+          walk(b.body, depth + 1, loopDepth + 1);
+          break;
+        case "while":
+          comparison(b);
+          if (!["while", "until"].includes(b.mode)) fail("Invalid loop mode");
+          walk(b.body, depth + 1, loopDepth + 1);
           break;
         case "ifFound":
-          walk(b.then, depth + 1);
-          walk(b.else, depth + 1);
+          walk(b.then, depth + 1, loopDepth);
+          walk(b.else, depth + 1, loopDepth);
+          break;
+        case "ifCompare":
+          comparison(b);
+          walk(b.then, depth + 1, loopDepth);
+          walk(b.else, depth + 1, loopDepth);
+          break;
+        case "setVar":
+          if (!variableName(b.name)) fail(`Unknown variable: ${b.name}`);
+          operand(b.value);
+          break;
+        case "math":
+          if (!variableName(b.name)) fail(`Unknown variable: ${b.name}`);
+          if (!["+", "-", "*", "/"].includes(b.operator)) fail("Invalid math operation");
+          operand(b.operand);
+          break;
+        case "break":
+        case "continue":
+          if (!loopDepth) fail(`${b.type} must be inside a loop`);
+          break;
+        case "aiNavigate":
+          if (typeof b.goal !== "string" || !b.goal.trim() || b.goal.length > 500) fail("Invalid AI navigation goal");
+          num(b.maxSteps, 1, 20, "AI steps");
+          if (!Number.isInteger(b.maxSteps)) fail("AI steps must be an integer");
+          break;
+        case "aiIf":
+          if (typeof b.prompt !== "string" || !b.prompt.trim() || b.prompt.length > 500) fail("Invalid AI question");
+          walk(b.then, depth + 1, loopDepth);
+          walk(b.else, depth + 1, loopDepth);
           break;
       }
     }

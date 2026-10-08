@@ -8,6 +8,7 @@ export class Runner {
     this.running = false;
     this.found = false;
     this.controller = null;
+    this.vars = Object.create(null);
   }
   stop() {
     this.running = false;
@@ -31,13 +32,36 @@ export class Runner {
     this.running = true;
     this.found = false;
     this.controller = new AbortController();
+    this.vars = Object.assign(Object.create(null), m.vars ?? {});
     try {
       await this.wait(3000);
       await this.blocks(m.blocks);
     } finally {
       this.stop();
       await this.bridge.release();
+      await this.options.ai?.unload().catch((error) => this.options.onAIStatus?.(`AI unload failed: ${error}`));
     }
+  }
+  operand(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : this.vars[value];
+  }
+  compare(b) {
+    const left = this.vars[b.name], right = this.operand(b.operand);
+    switch (b.operator) {
+      case "==": return left === right;
+      case "!=": return left !== right;
+      case "<": return left < right;
+      case "<=": return left <= right;
+      case ">": return left > right;
+      case ">=": return left >= right;
+      default: throw new Error("Invalid comparison");
+    }
+  }
+  assign(name, value) {
+    if (!Number.isFinite(value) || Math.abs(value) > 1000000000) throw new Error(`Variable ${name} exceeded its limit`);
+    this.vars[name] = value;
+    this.options.onVariable?.(name, value);
   }
   async move(b) {
     if ((!b.smooth && !this.options.humanize) || !this.bridge.position) {
@@ -70,7 +94,7 @@ export class Runner {
       if (i < steps) await this.wait(duration / steps);
     }
   }
-  async blocks(blocks) {
+  async blocks(blocks, loopDepth = 0) {
     for (const b of blocks) {
       await this.check();
       this.onStep(b.type);
@@ -147,13 +171,107 @@ export class Runner {
           break;
         case "loop":
           for (let i = 0; b.count === 0 || i < b.count; i++) {
-            await this.blocks(b.body);
+            const control = await this.blocks(b.body, loopDepth + 1);
+            if (control === "break") break;
             await this.wait(10);
           }
           break;
-        case "ifFound":
-          await this.blocks(this.found ? b.then : b.else);
+        case "while": {
+          while (b.mode === "while" ? this.compare(b) : !this.compare(b)) {
+            await this.check();
+            const control = await this.blocks(b.body, loopDepth + 1);
+            if (control === "break") break;
+            await this.wait(10);
+          }
           break;
+        }
+        case "ifFound":
+          { const control = await this.blocks(this.found ? b.then : b.else, loopDepth);
+            if (control) return control; }
+          break;
+        case "ifCompare":
+          { const control = await this.blocks(this.compare(b) ? b.then : b.else, loopDepth);
+            if (control) return control; }
+          break;
+        case "setVar":
+          this.assign(b.name, this.operand(b.value));
+          break;
+        case "math": {
+          const left = this.vars[b.name], right = this.operand(b.operand);
+          if (b.operator === "/" && right === 0) throw new Error("Division by zero");
+          const result = b.operator === "+" ? left + right : b.operator === "-" ? left - right :
+            b.operator === "*" ? left * right : left / right;
+          this.assign(b.name, result);
+          break;
+        }
+        case "break":
+        case "continue":
+          if (!loopDepth) throw new Error(`${b.type} must be inside a loop`);
+          return b.type;
+        case "aiIf": {
+          if (!this.options.ai) throw new Error("Local AI is available only in the Windows app");
+          const frame = await this.bridge.capture();
+          const answer = await this.options.ai.decide(b.prompt, frame);
+          await this.check();
+          this.found = answer;
+          const control = await this.blocks(answer ? b.then : b.else, loopDepth);
+          if (control) return control;
+          break;
+        }
+        case "aiNavigate": {
+          if (!this.options.ai) throw new Error("Local AI is available only in the Windows app");
+          const history = [];
+          let done = false;
+          for (let i = 0; i < b.maxSteps; i++) {
+            await this.check();
+            const frame = await this.bridge.capture();
+            const action = await this.options.ai.next(b.goal, frame, history.slice(-5));
+            await this.check();
+            if (action.action === "done") { done = true; break; }
+            if (action.action === "fail") throw new Error(`Local AI stopped: ${action.reason.slice(0, 180)}`);
+            if (action.action === "click") {
+              await this.move({ type: "move", x: frame.x + action.x, y: frame.y + action.y,
+                relative: false, screen: true, smooth: true, durationMs: 250 });
+              await this.check();
+              await this.bridge.input({ type: "click", button: "left" });
+              history.push(`clicked ${action.x},${action.y}`);
+            } else if (action.action === "type") {
+              await this.bridge.input({ type: "text", value: action.text });
+              history.push(`typed ${action.text.slice(0, 40)}`);
+            } else if (action.action === "key") {
+              try {
+                await this.bridge.input({ type: "key", key: action.key, action: "down", holdMs: 50 });
+                await this.wait(50);
+              } finally {
+                await this.bridge.input({ type: "key", key: action.key, action: "up", holdMs: 0 }).catch(() => {});
+              }
+              history.push(`pressed ${action.key}`);
+            } else if (action.action === "scroll") {
+              await this.bridge.input({ type: "scroll", amount: action.amount });
+              history.push(`scrolled ${action.amount}`);
+            }
+            this.options.onAIStatus?.(`AI step ${i + 1}/${b.maxSteps}: ${history.at(-1)}`);
+            await this.wait(350);
+          }
+          if (!done) throw new Error(`Local AI did not verify completion within ${b.maxSteps} steps`);
+          this.options.onAIStatus?.("Local AI verified the task");
+          break;
+        }
+        case "checkPixel": {
+          this.found = false;
+          const frame = await this.bridge.capture();
+          const hit = await this.vision.find(frame, b, this.controller.signal);
+          await this.check();
+          if (hit) {
+            this.found = true;
+            this.options.onMatch?.(b.type, hit);
+            if (b.click) {
+              await this.move({ type: "move", x: frame.x + hit.x, y: frame.y + hit.y, relative: false, screen: true, smooth: true, durationMs: 200 });
+              await this.bridge.input({ type: "click", button: "left" });
+            }
+          }
+          break;
+        }
         case "findText":
         case "findColor":
         case "findImage": {

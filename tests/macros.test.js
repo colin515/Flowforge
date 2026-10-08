@@ -7,6 +7,65 @@ import {
 } from "../packages/shared/macros.js";
 import { Runner } from "../packages/shared/runner.js";
 import { matchTemplate } from "../apps/desktop/src/template-match.js";
+import { checkPixel } from "../apps/desktop/src/pixel-check.js";
+import { parseAction, parseDecision } from "../apps/desktop/src/local-ai.js";
+test("math, comparisons and nested continue/break execute in the nearest loop", async () => {
+  const events = [];
+  const macro = { version: 1, name: "Count", vars: { counter: 0, limit: 5 }, blocks: [
+    { type: "while", mode: "while", name: "counter", operator: "<", operand: "limit", body: [
+      { type: "math", name: "counter", operator: "+", operand: "1" },
+      { type: "ifCompare", name: "counter", operator: "==", operand: "2", then: [{ type: "continue" }], else: [] },
+      { type: "ifCompare", name: "counter", operator: "==", operand: "4", then: [{ type: "break" }], else: [] },
+      { type: "click", button: "left" },
+    ] },
+    { type: "setVar", name: "limit", value: "counter" },
+  ] };
+  validateMacro(macro);
+  const runner = new Runner({ check: async () => {}, input: async (b) => events.push(b.type), release: async () => {} }, {}, () => {},
+    { onVariable: (name, value) => events.push(`${name}:${value}`) });
+  runner.wait = async () => {};
+  await runner.run(macro);
+  assert.deepEqual(events, ["counter:1", "click", "counter:2", "counter:3", "click", "counter:4", "limit:4"]);
+  assert.equal(runner.vars.limit, 4);
+});
+test("until, division and arithmetic errors are bounded and release input", async () => {
+  let released = 0;
+  const bridge = { check: async () => {}, input: async () => {}, release: async () => { released++; } };
+  const runner = new Runner(bridge, {});
+  runner.wait = async () => {};
+  const macro = { version: 1, name: "Until", vars: { count: 0 }, blocks: [
+    { type: "while", mode: "until", name: "count", operator: ">=", operand: "3", body: [
+      { type: "math", name: "count", operator: "+", operand: "1" },
+    ] },
+    { type: "math", name: "count", operator: "/", operand: "3" },
+  ] };
+  validateMacro(macro);
+  await runner.run(macro);
+  assert.equal(runner.vars.count, 1);
+  assert.equal(released, 1);
+  await assert.rejects(runner.run({ ...macro, blocks: [{ type: "math", name: "count", operator: "/", operand: "0" }] }), /Division by zero/);
+  assert.equal(released, 2);
+});
+test("invalid variable references and loop control outside a loop are rejected", () => {
+  const base = { version: 1, name: "Variables", vars: { count: 0 }, blocks: [] };
+  for (const block of [
+    { type: "math", name: "missing", operator: "+", operand: "1" },
+    { type: "setVar", name: "count", value: "unknown" },
+    { type: "break" }, { type: "continue" },
+  ]) assert.throws(() => validateMacro({ ...base, blocks: [block] }));
+  assert.throws(() => validateMacro({ ...base, vars: { "bad name": 0 } }));
+});
+test("pixel color check uses exact frame coordinates and tolerance", () => {
+  const image = { width: 2, height: 2, data: new Uint8ClampedArray([
+    0, 0, 0, 255, 10, 20, 30, 255,
+    40, 50, 60, 255, 70, 80, 90, 255,
+  ]) };
+  assert.deepEqual(checkPixel(image, 1, 0, "#0a141e", 0), { x: 1, y: 0, confidence: 100 });
+  assert.equal(checkPixel(image, 1, 0, "#0c141e", 1), null);
+  assert.equal(checkPixel(image, 2, 0, "#000000", 80), null);
+  const macro = { version: 1, name: "Pixel", blocks: [{ type: "checkPixel", x: 1, y: 0, color: "#0a141e", tolerance: 0, click: false }] };
+  assert.equal(validateMacro(macro), macro);
+});
 test("starter files validate", () =>
   starters.forEach((s) => validateMacro(s.macro)));
 test("reject executable fields, unknown operations, malformed nesting and values", () => {
@@ -118,9 +177,38 @@ test("humanized movement preserves the exact intended endpoint", async () => {
   });
 });
 test("new catalog starter uses valid key chords", () => {
-  assert.equal(starters.length, 4);
+  assert.equal(starters.length, 5);
   assert.equal(starters.find((s) => s.id === "da-hood-mobility").macro.blocks[0].body[0].keys, "w+Shift");
   assert.throws(() => validateMacro({ version: 1, name: "Bad chord", blocks: [{ type: "keyChord", keys: "a+;", holdMs: 50 }] }));
+});
+test("AI decisions and suggested actions reject malformed or out-of-frame output", () => {
+  assert.equal(parseDecision('{"answer":true}'), true);
+  assert.throws(() => parseDecision('{"answer":"true"}'));
+  assert.deepEqual(parseAction('{"action":"click","x":3,"y":4}', { width: 10, height: 10 }), { action: "click", x: 3, y: 4 });
+  for (const value of ['{"action":"shell","command":"dir"}', '{"action":"click","x":11,"y":1}', '{"action":"key","key":"F7"}', '{"action":"scroll","amount":100}'])
+    assert.throws(() => parseAction(value, { width: 10, height: 10 }));
+});
+test("AI if/else and bounded navigation use the focus-checked bridge and unload", async () => {
+  const calls = [];
+  const ai = { decide: async () => true, next: async () => ({ action: "done" }), unload: async () => calls.push("unload") };
+  const runner = new Runner({ check: async () => calls.push("check"), capture: async () => ({ x: 0, y: 0, width: 100, height: 100, data: "png" }),
+    input: async (b) => calls.push(b.type), release: async () => calls.push("release") }, {}, () => {}, { ai });
+  runner.wait = async () => {};
+  const macro = { version: 1, name: "AI", blocks: [{ type: "aiIf", prompt: "Is it visible?", then: [
+    { type: "aiNavigate", goal: "Finish task", maxSteps: 2 },
+  ], else: [{ type: "click", button: "left" }] }] };
+  validateMacro(macro);
+  await runner.run(macro);
+  assert.equal(calls.includes("click"), false);
+  assert.deepEqual(calls.slice(-2), ["release", "unload"]);
+});
+test("AI navigator halts at its step limit", async () => {
+  let count = 0;
+  const runner = new Runner({ check: async () => {}, capture: async () => ({ width: 10, height: 10, data: "png" }),
+    input: async () => {}, release: async () => {} }, {}, () => {}, { ai: { next: async () => { count++; return { action: "scroll", amount: 1 }; }, unload: async () => {} } });
+  runner.wait = async () => {};
+  await assert.rejects(runner.run({ blocks: [{ type: "aiNavigate", goal: "Scroll", maxSteps: 2 }] }), /did not verify completion/);
+  assert.equal(count, 2);
 });
 test("smooth movement interpolates and ends at the intended endpoint", async () => {
   const inputs = [];

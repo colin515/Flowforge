@@ -1,16 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Activity, ArrowDown, ArrowUp, Check, ChevronRight, Copy,
   Download, ExternalLink, Flag, GripVertical, Layers, Lock, Moon,
   MousePointer2, Play, Plus, RefreshCw, Save, ScanLine, Search,
   ShieldCheck, Square, Star, Store, Sun, ThumbsDown, ThumbsUp, Image as ImageIcon,
-  Trash2, Upload, X,
+  Trash2, Upload, X, Minus, Maximize2, Volume2,
 } from "lucide-react";
 import { starters, defaults, clone, validateMacro, parseMacro, downloadJSON } from "../../../packages/shared/macros.js";
 import { Runner } from "../../../packages/shared/runner.js";
 import { Vision } from "./vision.js";
+import { AudioFeedback } from "./audio.js";
+import { LocalAI } from "./local-ai.js";
 import logoUrl from "./assets/flowforge-mark.svg";
 import config from "../../../config.json";
 import "./style.css";
@@ -19,12 +22,17 @@ const labels = {
   wait: "Wait / random delay", move: "Move mouse", click: "Mouse click",
   key: "Press / hold key", keyChord: "Key chord", text: "Type text", drag: "Drag mouse",
   findText: "Find text", findColor: "Find color", findImage: "Find image",
-  loop: "Repeat / infinite loop",
-  ifFound: "If match / else",
+  checkPixel: "Check pixel color", loop: "Repeat / infinite loop", while: "While / until",
+  ifFound: "If match / else", ifCompare: "If variable / else",
+  setVar: "Set variable", math: "Variable arithmetic", break: "Break loop", continue: "Continue loop",
+  aiNavigate: "AI Navigate & Do", aiIf: "AI If / Else",
 };
 const colors = {
   wait: "mint", move: "peach", click: "peach", key: "peach", keyChord: "peach", text: "peach",
-  drag: "peach", findText: "blue", findColor: "blue", findImage: "blue", loop: "lavender", ifFound: "lavender",
+  drag: "peach", findText: "blue", findColor: "blue", findImage: "blue", checkPixel: "blue",
+  loop: "lavender", while: "lavender", ifFound: "lavender", ifCompare: "lavender",
+  setVar: "mint", math: "mint", break: "lavender", continue: "lavender",
+  aiNavigate: "blue", aiIf: "blue",
 };
 const get = (object, path) => path.reduce((value, key) => value?.[key], object);
 const readLocal = (key, fallback) => {
@@ -62,6 +70,7 @@ function App() {
   const [logs, setLogs] = useState(() => [{ time: formatTime(), kind: "info", message: "Studio ready" }]);
   const [updated, setUpdated] = useState(null);
   const [humanize, setHumanize] = useState(false);
+  const [sounds, setSounds] = useState(() => readLocal("ff-sounds", true));
   const [catalog, setCatalog] = useState(catalogFallback);
   const [marketStatus, setMarketStatus] = useState("");
   const [marketStats, setMarketStats] = useState(() => readLocal("ff-market-stats", {}));
@@ -70,15 +79,18 @@ function App() {
   const [reportItem, setReportItem] = useState(null);
   const [scanStep, setScanStep] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const runner = useRef(null);
   const session = useRef(null);
   const runBusy = useRef(false);
   const fileRef = useRef(null);
   const vision = useRef(new Vision());
+  const audio = useRef(new AudioFeedback());
   const native = isTauri();
   const locked = Boolean(selected?.locked);
   const focused = path && macro ? get(macro, path) : null;
   const installed = (item) => custom.some((entry) => entry.sourceId === item.id);
+  const aiInstalled = custom.some((entry) => entry.sourceId === "local-ai-suite");
   const record = (kind, message) => {
     setStatus(message);
     setLogs((current) => [...current.slice(-199), { time: formatTime(), kind, message }]);
@@ -93,6 +105,7 @@ function App() {
   }, [theme]);
   useEffect(() => { localStorage.setItem("ff-macros", JSON.stringify(custom)); }, [custom]);
   useEffect(() => { localStorage.setItem("ff-market-stats", JSON.stringify(marketStats)); }, [marketStats]);
+  useEffect(() => { audio.current.enabled = sounds; localStorage.setItem("ff-sounds", JSON.stringify(sounds)); }, [sounds]);
   useEffect(() => {
     refreshWindows();
     const abort = new AbortController();
@@ -106,8 +119,9 @@ function App() {
       }).catch(() => {});
     return () => {
       abort.abort(); runner.current?.stop();
-      if (native) invoke("stop").catch(() => {});
+      if (native) { invoke("stop").catch(() => {}); invoke("ai_unload").catch(() => {}); }
       vision.current.dispose();
+      audio.current.dispose();
     };
   }, []);
 
@@ -140,7 +154,7 @@ function App() {
     record("success", "Created an editable macro");
   }
   function create() {
-    const macro = { version: 1, name: "Untitled flow", blocks: [] };
+    const macro = { version: 1, name: "Untitled flow", vars: {}, blocks: [] };
     const entry = { id: crypto.randomUUID(), name: macro.name, macro };
     setCustom((entries) => [...entries, entry]); setId(entry.id); setView("builder");
     record("success", "New flow created");
@@ -161,7 +175,16 @@ function App() {
     } catch (error) { record("error", error.message); }
     finally { if (fileRef.current) fileRef.current.value = ""; }
   }
-  function add(listPath, type) { mutate((copy) => get(copy, listPath).push(clone(defaults[type]))); }
+  function makeBlock(copy, type) {
+    const block = clone(defaults[type]);
+    if (["setVar", "math", "while", "ifCompare"].includes(type)) {
+      copy.vars ??= {};
+      if (!Object.keys(copy.vars).length) copy.vars.counter = 0;
+      block.name = Object.keys(copy.vars)[0];
+    }
+    return block;
+  }
+  function add(listPath, type) { mutate((copy) => get(copy, listPath).push(makeBlock(copy, type))); }
   function remove(blockPath) {
     mutate((copy) => get(copy, blockPath.slice(0, -1)).splice(blockPath.at(-1), 1)); setPath(null);
   }
@@ -174,7 +197,7 @@ function App() {
   function dropBlock(listPath, index, data) {
     mutate((copy) => {
       const list = get(copy, listPath);
-      if (data.type === "palette" && Object.hasOwn(defaults, data.block)) list.splice(index, 0, clone(defaults[data.block]));
+      if (data.type === "palette" && Object.hasOwn(defaults, data.block)) list.splice(index, 0, makeBlock(copy, data.block));
       if (data.type === "existing" && Array.isArray(data.path)) {
         const sourcePath = data.path;
         if (listPath.length >= sourcePath.length && sourcePath.every((key, i) => listPath[i] === key)) return;
@@ -245,9 +268,29 @@ function App() {
   async function stop() {
     runner.current?.stop(); record("warning", "Stopping input…");
     if (native) await invoke("stop").catch(() => {});
+    if (runner.current?.options.ai?.ready) invoke("ai_unload").catch(() => {});
+  }
+  const localAI = () => new LocalAI({
+    prepare: () => invoke("ai_prepare"),
+    generate: (request) => invoke("ai_generate", { request }),
+    unload: () => invoke("ai_unload"),
+  }, (message) => record("info", message));
+  async function generateFlow(goal) {
+    if (!native || !aiInstalled || running || aiBusy) return;
+    setAiBusy(true);
+    const ai = localAI();
+    try {
+      if (!goal.trim() || goal.length > 500) throw new Error("Describe your goal in 1–500 characters");
+      const created = await ai.generateMacro(goal);
+      const entry = { id: crypto.randomUUID(), name: created.name, macro: created };
+      setCustom((entries) => [...entries, entry]); setId(entry.id); setBuilderPane("blocks");
+      record("warning", "Generated flow added. Review every block before running.");
+    } catch (error) { record("error", String(error.message ?? error)); }
+    finally { await ai.unload().catch(() => {}); setAiBusy(false); }
   }
   async function run() {
     if (runBusy.current) return;
+    audio.current.activate();
     runBusy.current = true; setView("run");
     try {
       validateMacro(macro);
@@ -263,27 +306,42 @@ function App() {
       };
       runner.current = new Runner(bridge, vision.current, (type) => {
         setStep(labels[type]); setLogs((entries) => [...entries.slice(-199), { time: formatTime(), kind: "step", message: labels[type] }]);
-      }, { humanize, onMatch: (type, hit) => record("success", `${labels[type]} matched at ${hit.x}, ${hit.y}${hit.confidence == null ? "" : ` · ${hit.confidence}% confidence`}`) });
-      record("info", `Starting ${macro.name} in 3 seconds · F8 to stop`);
+        if (["click", "key", "keyChord"].includes(type)) audio.current.play("tick");
+      }, { humanize, ai: localAI(), onAIStatus: (message) => record("info", message),
+        onMatch: (type, hit) => record("success", `${labels[type]} matched at ${hit.x}, ${hit.y}${hit.confidence == null ? "" : ` · ${hit.confidence}% confidence`}`),
+        onVariable: (name, value) => setLogs((entries) => [...entries.slice(-199), { time: formatTime(), kind: "step", message: `${name} = ${value}` }]) });
+      record("info", `Starting ${macro.name} in 3 seconds · F7 to stop`);
       let focusWarning = false;
       const heartbeat = setInterval(() => bridge.check().catch((error) => {
         if (focusWarning) return;
         focusWarning = true;
         runner.current?.stop(); record("warning", String(error));
       }), 250);
-      try { await runner.current.run(clone(macro)); record("success", "Flow finished"); }
+      try { await runner.current.run(clone(macro)); record("success", "Flow finished"); audio.current.play("success"); }
       finally { clearInterval(heartbeat); }
-    } catch (error) { record("error", String(error.message ?? error)); }
+    } catch (error) { record("error", String(error.message ?? error)); audio.current.play("error"); }
     finally {
       if (native) await invoke("stop").catch(() => {});
       runner.current = null; runBusy.current = false; setRunning(false); setStep("");
     }
   }
   function selectMacro(nextId) { if (!running) { setId(nextId); setView("builder"); } }
+  async function windowControl(action) {
+    if (!native) return;
+    try { await getCurrentWindow()[action](); }
+    catch (error) { record("error", `Window control failed: ${error}`); }
+  }
   const actions = { macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, deleteSelected, record,
-    builderPane, setBuilderPane, run, create, fileRef, imported, id, selected };
+    builderPane, setBuilderPane, run, create, fileRef, imported, id, selected, aiInstalled, aiBusy, generateFlow, native };
   return (
     <div className="studio">
+      <div className="windowbar"><div className="window-drag" data-tauri-drag-region onDoubleClick={() => windowControl("toggleMaximize")}
+        aria-label="Drag Flowforge Studio window"><img src={logoUrl} alt="" /><span>Flowforge Studio</span><i className={`status-dot ${running ? "live" : ""}`} /></div>
+        <div className="window-controls" aria-label="Window controls">
+          <button title="Minimize" aria-label="Minimize window" disabled={!native} onClick={() => windowControl("minimize")}><Minus size={15} /></button>
+          <button title="Maximize or restore" aria-label="Maximize or restore window" disabled={!native} onClick={() => windowControl("toggleMaximize")}><Maximize2 size={13} /></button>
+          <button className="window-close" title="Close" aria-label="Close window" disabled={!native} onClick={() => windowControl("close")}><X size={15} /></button>
+        </div></div>
       <aside className="sidebar">
         <button className="brand" onClick={() => setView("builder")} aria-label="Flowforge Studio home">
           <span className="brandmark"><img src={logoUrl} alt="" /></span><span>flowforge</span><small>STUDIO</small>
@@ -303,7 +361,7 @@ function App() {
         </div>
         <button className="importnav" disabled={running} onClick={() => fileRef.current?.click()}><Upload size={16} /> Import JSON macro</button>
         <input ref={fileRef} hidden type="file" accept=".json,application/json" onChange={(event) => imported(event.target.files?.[0])} />
-        <div className="sidebarfoot"><ShieldCheck size={19} /><div><strong>Always in control.</strong><p>Local macros · F8 emergency stop</p></div>
+        <div className="sidebarfoot"><ShieldCheck size={19} /><div><strong>Always in control.</strong><p>Local macros · F7 emergency stop</p></div>
           <button aria-label="Toggle theme" title="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button></div>
       </aside>
       <main className="main">
@@ -316,7 +374,8 @@ function App() {
           {view === "marketplace" && <MarketplaceView catalog={catalog} marketStatus={marketStatus} marketSearch={marketSearch} setMarketSearch={setMarketSearch}
             stats={marketStats} updateStat={updateStat} prepareInstall={prepareInstall} installed={installed} busy={busy} loadMarketplace={loadMarketplace} setReportItem={setReportItem} />}
           {view === "run" && <RunView macro={macro} windows={windows} target={target} setTarget={setTarget} refreshWindows={refreshWindows}
-            humanize={humanize} setHumanize={setHumanize} running={running} run={run} stop={stop} status={status} step={step} logs={logs} native={native} />}
+            humanize={humanize} setHumanize={setHumanize} sounds={sounds} setSounds={setSounds} activateSound={() => { audio.current.enabled = true; audio.current.activate(); }}
+            running={running} run={run} stop={stop} status={status} step={step} logs={logs} native={native} />}
         </div>
         <div role="status" className="statusbar"><i className={`status-dot ${running ? "live" : ""}`} /> {status}<span>{step}</span></div>
       </main>
@@ -345,8 +404,27 @@ function EmptyBuilder({ create, openMarket, importFile }) {
       <button className="secondary" onClick={openMarket}><Store size={16} /> Browse marketplace</button>
       <button className="ghost" onClick={importFile}><Upload size={16} /> Import JSON</button></div></section>;
 }
-function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, deleteSelected, record, builderPane, setBuilderPane, run, id, selected }) {
+function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, deleteSelected, record, builderPane, setBuilderPane, run, id, selected, aiInstalled, aiBusy, generateFlow, native }) {
   const clicker = id === "auto-clicker" || selected.sourceId === "auto-clicker";
+  const [variableName, setVariableName] = useState("");
+  const [variableInitial, setVariableInitial] = useState("0");
+  const [aiGoal, setAiGoal] = useState("");
+  const variables = macro.vars ?? {};
+  function addVariable(event) {
+    event.preventDefault();
+    const name = variableName.trim(), initial = Number(variableInitial);
+    if (!/^[a-zA-Z][a-zA-Z0-9_]{0,31}$/.test(name) || Object.hasOwn(variables, name) || Object.keys(variables).length >= 32 ||
+      !Number.isFinite(initial) || Math.abs(initial) > 1000000000) return record("error", "Use a unique variable name and a finite initial value");
+    mutate((copy) => { copy.vars ??= {}; copy.vars[name] = initial; });
+    setVariableName(""); setVariableInitial("0");
+    record("success", `Variable ${name} created`);
+  }
+  function deleteVariable(name) {
+    const uses = (blocks) => blocks.some((block) => block.name === name || block.operand === name || block.value === name ||
+      ["body", "then", "else"].some((branch) => Array.isArray(block[branch]) && uses(block[branch])));
+    if (uses(macro.blocks)) return record("error", `Remove blocks using ${name} before deleting it`);
+    mutate((copy) => { delete copy.vars[name]; });
+  }
   async function uploadTemplate(file) {
     if (!file || !path) return;
     try {
@@ -374,8 +452,23 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
         {!locked && <button className="ghost danger" title="Delete macro" disabled={running} onClick={deleteSelected}><Trash2 size={16} /> Delete</button>}
         <button className="primary" onClick={run} disabled={running}><Play size={15} fill="currentColor" /> Run flow</button></div></div>
     <div className="builder-tabs"><button className={builderPane === "blocks" ? "selected" : ""} onClick={() => setBuilderPane("blocks")}>Block builder</button>
+      <button className={builderPane === "variables" ? "selected" : ""} onClick={() => setBuilderPane("variables")}>Variables <span>{Object.keys(variables).length}</span></button>
+      {aiInstalled && <button className={builderPane === "ai" ? "selected" : ""} onClick={() => setBuilderPane("ai")}>AI Generator</button>}
       {clicker && <button className={builderPane === "clicker" ? "selected" : ""} onClick={() => setBuilderPane("clicker")}>Clicker settings</button>}</div>
-    {builderPane === "clicker" && clicker ? <div className="clickersettings surface"><span className="featureicon peach"><MousePointer2 size={25} /></span><h2>Auto-Clicker</h2>
+    {builderPane === "variables" ? <div className="variable-panel surface"><small>INITIAL VALUES</small><h2>Variables & counters</h2><p>Set starting values here. Set and Math blocks update them as a flow runs.</p>
+      <div className="variable-list">{Object.entries(variables).map(([name, value]) => <label key={name}><code>{name}</code><input type="number" aria-label={`Initial value for ${name}`} disabled={locked || running}
+        value={value} onChange={(event) => mutate((copy) => { copy.vars[name] = Number(event.target.value); })} /><button aria-label={`Delete ${name}`} disabled={locked || running} onClick={() => deleteVariable(name)}><Trash2 size={15} /></button></label>)}</div>
+      {!Object.keys(variables).length && <p className="variable-empty">No variables. Create a counter to use it in math and condition blocks.</p>}
+      <form onSubmit={addVariable}><input aria-label="Variable name" placeholder="Variable name" value={variableName} disabled={locked || running} onChange={(event) => setVariableName(event.target.value)} />
+        <input aria-label="Initial value" type="number" value={variableInitial} disabled={locked || running} onChange={(event) => setVariableInitial(event.target.value)} />
+        <button className="secondary" disabled={locked || running}><Plus size={15} /> Add variable</button></form></div> :
+    builderPane === "ai" && aiInstalled ? <div className="ai-panel surface"><span className="featureicon blue"><ScanLine size={24} /></span>
+      <small>LOCAL AI · QWEN2.5-VL 3B</small><h2>Describe a flow.</h2><p>Turn a plain-language goal into a validated block tree. The model loads only when you generate or run an AI block, then unloads. Ollama must be installed and running; the model downloads on first use.</p>
+      <form onSubmit={(event) => { event.preventDefault(); generateFlow(aiGoal); }}><label htmlFor="ai-goal">WHAT SHOULD THIS FLOW DO?</label>
+        <textarea id="ai-goal" minLength={3} maxLength={500} required value={aiGoal} onChange={(event) => setAiGoal(event.target.value)} placeholder="Find the sound settings, then turn the volume off" />
+        <button className="primary" disabled={!native || aiBusy || running || !aiGoal.trim()}>{aiBusy ? "Preparing local model…" : "Generate blocks"}</button></form>
+      <p className="ai-disclosure">AI can misread screens or propose the wrong action. Review each generated block before running. Screenshots are sent only to Ollama at 127.0.0.1.</p></div> :
+    builderPane === "clicker" && clicker ? <div className="clickersettings surface"><span className="featureicon peach"><MousePointer2 size={25} /></span><h2>Auto-Clicker</h2>
       <p>Choose the mouse button and delay between clicks. Save creates an editable copy.</p>
       <label>Click interval (milliseconds)<input type="number" min="10" max="3600000" disabled={running || locked} value={macro.blocks[0]?.body?.[1]?.ms ?? 100}
         onChange={(event) => mutate((copy) => { copy.blocks[0].body[1].ms = Number(event.target.value); })} /></label>
@@ -383,17 +476,22 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
         onChange={(event) => mutate((copy) => { copy.blocks[0].body[0].button = event.target.value; })}><option value="left">Left button</option><option value="right">Right button</option></select></label>
       <button className="secondary" onClick={save}>{id === "auto-clicker" ? "Save configured copy" : "Save changes"}</button></div> :
       <div className="builder-grid surface"><div className="palette"><small>BLOCK LIBRARY</small>
-        <div className="palette-group"><strong>CONTROL</strong>{["loop", "ifFound", "wait"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
+        <div className="palette-group"><strong>CONTROL</strong>{["loop", "while", "ifFound", "ifCompare", "break", "continue", "wait"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
+        <div className="palette-group"><strong>VARIABLES</strong>{["setVar", "math"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
         <div className="palette-group"><strong>INPUT & ACTIONS</strong>{["move", "click", "key", "keyChord", "text", "drag"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        <div className="palette-group"><strong>VISION</strong>{["findText", "findColor", "findImage"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
+        <div className="palette-group"><strong>VISION</strong>{["findText", "findColor", "findImage", "checkPixel"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
+        {aiInstalled && <div className="palette-group"><strong>LOCAL AI</strong>{["aiNavigate", "aiIf"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>}
         <p>Drag into any list to nest blocks, or click to append.</p></div>
         <div className="canvas"><div className="canvaslabel"><i className="status-dot live" /> WHEN FLOW STARTS <span>{locked ? <><Lock size={12} /> LOCKED</> : "EDITABLE FLOW"}</span></div>
           <BlockList list={macro.blocks} listPath={["blocks"]} chosen={path} select={setPath} add={add} remove={remove} reorder={reorder} dropBlock={dropBlock} disabled={locked || running} />
-          <div className="canvasfoot"><ShieldCheck size={15} /> F8 stops input instantly · target focus is checked continuously</div></div>
+          <div className="canvasfoot"><ShieldCheck size={15} /> F7 stops input instantly · target focus is checked continuously</div></div>
         <div className="inspector"><small>BLOCK SETTINGS</small><h3>{focused ? labels[focused.type] : "Select a block"}</h3>
           {focused ? <><div className="inspector-fields">{Object.entries(focused).filter(([key, value]) => key !== "type" && key !== "template" && !Array.isArray(value)).map(([key, value]) =>
             <label key={key}>{key.replace(/([A-Z])/g, " $1")}{typeof value === "boolean" ? <input type="checkbox" disabled={locked || running} checked={value}
-              onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.checked; })} /> : key === "button" ?
+              onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.checked; })} /> : key === "name" ?
+              <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}>{Object.keys(variables).map((name) => <option key={name} value={name}>{name}</option>)}</select> : key === "operator" ?
+              <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}>{(focused.type === "math" ? ["+", "-", "*", "/"] : ["==", "!=", "<", "<=", ">", ">="]).map((op) => <option key={op} value={op}>{op}</option>)}</select> : key === "mode" ?
+              <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}><option value="while">While true</option><option value="until">Until true</option></select> : key === "button" ?
               <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}><option value="left">Left</option><option value="right">Right</option></select> :
               <input disabled={locked || running} type={typeof value === "number" ? "number" : key === "color" ? "color" : "text"} value={value}
                 onChange={(event) => mutate((copy) => { get(copy, path)[key] = typeof value === "number" ? Number(event.target.value) : event.target.value; })} />}</label>)}</div>
@@ -402,8 +500,11 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
               {focused.template && <img src={focused.template} alt="Template preview" />}
               <p>Crop tightly around the object. Maximum 128 × 128 pixels. The match uses the template's original size.</p></div>}
             {focused.type === "loop" && <p>0 repeats indefinitely. Set a positive count for a finite loop.</p>}
+            {["break", "continue"].includes(focused.type) && <p>Place this block inside a Repeat or While/Until body. It affects the nearest enclosing loop.</p>}
+            {["math", "setVar", "while", "ifCompare"].includes(focused.type) && <p>Operands accept numbers or the name of another variable. Edit starting values in the Variables tab.</p>}
             {focused.type === "move" && <p>Smooth movement eases between endpoints. Duration is in milliseconds; humanization adds small path and timing variation.</p>}
             {focused.type === "keyChord" && <p>Separate simultaneous keys with +, for example w+Shift.</p>}
+            {focused.type.startsWith("ai") && <p>Runs on your local Ollama model when this block executes. Choose a target window; the agent is limited to 20 steps and stops on focus loss or F7.</p>}
             {focused.type.startsWith("find") && <p>Scans visible pixels. The interval defaults to 500 ms; recognition may take longer.</p>}</> : <p>Choose a block to edit its values. Drag blocks into the canvas and nested branches.</p>}
           <div className="inspector-foot"><ShieldCheck size={20} /><strong>Your desktop stays yours.</strong><p>Input stops when the chosen window loses focus.</p></div></div></div>}
   </section>;
@@ -432,7 +533,7 @@ function MarketplaceView({ catalog, marketStatus, marketSearch, setMarketSearch,
     })}</div>{!visible.length && <div className="empty-state">No matching macros. Try another search.</div>}
     <p className="market-disclosure"><ShieldCheck size={14} /> Counts, ratings, votes, and reports are local to this device. Shared community services are not connected.</p></section>;
 }
-function RunView({ macro, windows, target, setTarget, refreshWindows, humanize, setHumanize, running, run, stop, status, step, logs, native }) {
+function RunView({ macro, windows, target, setTarget, refreshWindows, humanize, setHumanize, sounds, setSounds, activateSound, running, run, stop, status, step, logs, native }) {
   const logEnd = useRef(null);
   useEffect(() => { logEnd.current?.scrollIntoView({ block: "end" }); }, [logs]);
   return <section className="run-view" aria-label="Run and execution dashboard"><div className="view-heading"><div><small>LIVE CONTROL CENTER</small><h1>Run with confidence.</h1><p>Choose a target, monitor each step, and stop at any time.</p></div>
@@ -443,8 +544,9 @@ function RunView({ macro, windows, target, setTarget, refreshWindows, humanize, 
         <button aria-label="Refresh windows" title="Refresh windows" disabled={running} onClick={refreshWindows}><RefreshCw size={16} /></button></div>
       <div className="safety-note"><ShieldCheck size={19} /><div><strong>{target === "global" ? "Global mode" : "Focus protection active"}</strong><p>{target === "global" ? "Input can reach your entire desktop. Choose a window for focus protection." : "Input stops as soon as this window loses focus."}</p></div></div>
       <label className="toggle-row"><input type="checkbox" disabled={running} checked={humanize} onChange={(event) => setHumanize(event.target.checked)} /><span>Vary timing and mouse path slightly</span></label>
-      <div className="run-buttons">{running ? <button className="stop" onClick={stop}><Square size={16} fill="currentColor" /> Stop · F8</button> : <button className="primary" onClick={run} disabled={!native || !macro}><Play size={16} fill="currentColor" /> Start flow</button>}</div>
-      <p className="shortcut">F8 · Emergency stop from anywhere</p></div>
+      <label className="toggle-row"><Volume2 size={17} /><input type="checkbox" checked={sounds} onChange={(event) => { if (event.target.checked) activateSound(); setSounds(event.target.checked); }} /><span>Subtle action and event sounds</span></label>
+      <div className="run-buttons">{running ? <button className="stop" onClick={stop}><Square size={16} fill="currentColor" /> Stop · F7</button> : <button className="primary" onClick={run} disabled={!native || !macro}><Play size={16} fill="currentColor" /> Start flow</button>}</div>
+      <p className="shortcut">F7 · Emergency stop from anywhere</p></div>
       <div className="run-monitor surface"><div className="monitor-header"><div><small>LIVE ACTIVITY</small><h2>Execution log</h2></div><span>{step || status}</span></div>
         <div className="terminal" role="log" aria-live="polite">{logs.map((entry, index) => <div className={`log-line ${entry.kind}`} key={`${entry.time}-${index}`}><time>{entry.time}</time><span>{entry.kind.toUpperCase()}</span><p>{entry.message}</p></div>)}<div ref={logEnd} /></div></div></div></section>;
 }
@@ -510,10 +612,24 @@ function BlockList({
                       ? b.count === 0
                         ? "until stopped"
                         : `${b.count} times`
+                      : b.type === "while"
+                        ? `${b.mode} ${b.name} ${b.operator} ${b.operand}`
+                      : b.type === "ifCompare"
+                        ? `${b.name} ${b.operator} ${b.operand}`
+                      : b.type === "setVar"
+                        ? `${b.name} = ${b.value}`
+                      : b.type === "aiNavigate"
+                        ? `${b.maxSteps} steps · ${b.goal.slice(0, 35)}`
+                      : b.type === "aiIf"
+                        ? b.prompt.slice(0, 38)
+                      : b.type === "math"
+                        ? `${b.name} ${b.operator}= ${b.operand}`
                       : b.type === "findText"
                         ? `“${b.text}”`
                         : b.type === "findImage"
                           ? b.template ? `${b.confidence}% match` : "upload image"
+                        : b.type === "checkPixel"
+                          ? `${b.x}, ${b.y} · ${b.color}`
                         : b.type === "click"
                           ? b.button
                           : b.type === "key"
@@ -553,14 +669,14 @@ function BlockList({
                 </button>
               </div>
             </div>
-            {b.type === "loop" && (
+            {(b.type === "loop" || b.type === "while") && (
               <BlockList
                 list={b.body}
                 listPath={[...path, "body"]}
                 {...props}
               />
             )}
-            {b.type === "ifFound" && (
+            {(b.type === "ifFound" || b.type === "ifCompare" || b.type === "aiIf") && (
               <>
                 <small className="branchlabel">THEN</small>
                 <BlockList

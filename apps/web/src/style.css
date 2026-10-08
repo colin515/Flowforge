@@ -1171,6 +1171,39 @@ nav { border-color: var(--line); background: color-mix(in srgb,var(--bg) 78%,tra
 .product, .market-teaser { border-radius: 24px; }
 .macrocard { border-radius: 18px; }
 [data-theme="dark"] .product, [data-theme="dark"] .macrocard, [data-theme="dark"] .market-teaser { box-shadow: 0 24px 60px rgba(0,0,0,.3),0 4px 12px rgba(0,0,0,.15); }
+
+@keyframes enter-product {
+  from { opacity: .45; transform: perspective(1200px) translateY(80px) rotateX(7deg) scale(.89); }
+  to { opacity: 1; transform: perspective(1200px) translateY(0) rotateX(0) scale(1); }
+}
+@keyframes enter-feature {
+  from { opacity: .35; transform: translateY(42px) scale(.94) rotate(-1.2deg); }
+  to { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+@keyframes enter-section {
+  from { opacity: .4; transform: translateY(54px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@supports (animation-timeline: view()) {
+  .product {
+    animation: enter-product linear both;
+    animation-timeline: view(block);
+    animation-range: entry 0% cover 34%;
+  }
+  .featuregrid article {
+    animation: enter-feature linear both;
+    animation-timeline: view(block);
+    animation-range: entry 0% cover 32%;
+  }
+  .market-teaser, .closing {
+    animation: enter-section linear both;
+    animation-timeline: view(block);
+    animation-range: entry 0% cover 28%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .product, .featuregrid article, .market-teaser, .closing { animation: none !important; opacity: 1; transform: none; }
+}
 [data-theme="dark"] .play { background: var(--accent); color: #fff; }
 [data-theme="dark"] .scanpreview, [data-theme="dark"] kbd { background: var(--soft); }
 [data-theme="dark"] .cardactions button[aria-pressed="true"] { background: #184e83; color: #d9efff; }

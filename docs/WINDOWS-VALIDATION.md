@@ -1,16 +1,15 @@
 # Native acceptance checks
 
-This starter's JavaScript tests and Vite builds were verified in a Linux
-workspace. Rust compilation, an actual NSIS installer, input delivery, DPI behavior,
-and live OCR were not verified there. The Windows Actions job compiles the native
-code and builds the installer; these interactive checks still require Windows.
+JavaScript tests can run in a Linux workspace. The Windows Actions job compiles
+the native code and builds the installer. Input delivery, DPI behavior, live OCR,
+AI navigation and focus handoff require interactive checks on Windows.
 
 1. Install from the generated NSIS artifact on Windows 10/11 with WebView2.
    On first launch, confirm the library and builder are empty. Install a catalog
    macro, restart, and confirm only the installed macro persists.
 2. Use a test window (Notepad) first. Start a finite loop, switch to that window
    within the three-second countdown, then verify click/key/hold behavior.
-3. Press F8 during a delay, drag, key hold and OCR request. All held input must
+3. Press F7 during a delay, drag, key hold and OCR request. All held input must
    release. No input may occur after stop.
 4. Lose focus, close or minimize the target. Verify the session stops, rather
    than sending input into another foreground window.
@@ -33,6 +32,15 @@ code and builds the installer; these interactive checks still require Windows.
 11. Test smooth movement with and without humanization in client-relative and
     global mode. The final cursor position must be exact. Stop during a key
     chord and confirm each key is released.
+12. Confirm the frameless titlebar drags, double-clicks to maximize/restore,
+    and its three native controls work at several display scaling settings.
+    Toggle sound and confirm click, completion and error cues respect the switch.
+13. Install Local AI Agent Suite from the Marketplace. Confirm no model runs
+    on app launch. With Ollama running, invoke the generator or an AI block and
+    observe first-use pull, license check, bounded actions, strict boolean
+    branches, stop/focus interruption and unload on completion. Try malformed
+    model JSON and out-of-frame coordinates. Confirm a missing Ollama service
+    presents a useful error and leaves ordinary macros usable.
 
 Protected/elevated apps, exclusive fullscreen games, and some Roblox input paths
 may reject synthetic input or screenshot capture. No guarantee of anti-AFK
@@ -54,5 +62,5 @@ on representative Windows hardware before publishing performance claims.
 Native checks use foreground identity rather than injecting into background
 processes. A very small focus-change race remains between checking foreground
 state and delivering a Windows input event; this is standard foreground input,
-not exclusive window delivery. F8 is polled through GetAsyncKeyState; no installed
+not exclusive window delivery. F7 is polled through GetAsyncKeyState; no installed
 keyboard hook or kernel driver is used.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Flowforge",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "identifier": "com.flowforge.studio",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "Flowforge Studio",
+        "decorations": false,
         "width": 1280,
         "height": 850,
         "minWidth": 900,

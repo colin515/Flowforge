@@ -20,6 +20,6 @@ unsafe extern "system" fn visit(hwnd:isize,data:isize)->i32{
  if len>0&&pid!=std::process::id(){let result=&mut *(data as *mut Vec<WindowInfo>);result.push(WindowInfo{id:hwnd.to_string(),title:String::from_utf16_lossy(&text[..len as usize]),pid})}1
 }
 pub fn foreground()->isize{unsafe{GetForegroundWindow()}}
-pub fn f8_down()->bool{unsafe{GetAsyncKeyState(0x77)<0}}
+pub fn emergency_down()->bool{unsafe{GetAsyncKeyState(0x76)<0||GetAsyncKeyState(0x77)<0}}
 pub fn valid(hwnd:isize,pid:u32)->bool{unsafe{let mut current=0;GetWindowThreadProcessId(hwnd,&mut current);IsWindow(hwnd)!=0&&IsWindowVisible(hwnd)!=0&&IsIconic(hwnd)==0&&pid==current}}
 pub fn client_rect(hwnd:isize)->Result<Rect,String>{unsafe{let mut r=Rect::default();let mut point=Point::default();if GetClientRect(hwnd,&mut r)==0||ClientToScreen(hwnd,&mut point)==0{return Err("Cannot read target bounds".into())}r.right+=point.x;r.bottom+=point.y;r.left=point.x;r.top=point.y;if r.right<=r.left||r.bottom<=r.top{return Err("Target has no visible client area".into())}Ok(r)}}

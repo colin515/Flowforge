@@ -7,7 +7,7 @@ landing page. Tauri 2 + Rust + React power the desktop; React/Vite and CSS power
 the GitHub Pages site. Tesseract.js supplies open-source OCR. Plain CSS keeps the
 styling dependency footprint small; Lucide provides consistent SVG icons.
 
-**Status:** v0.3.0 opens to an empty local library. Users create, import or install
+**Status:** v0.4.0 opens to an empty local library. Users create, import or install
 macros from the catalog. Builder, Marketplace, and Run & Logs remain isolated
 views. The Windows installer is built by GitHub Actions. Marketplace
 engagement remains local to each device; shared accounts, counts, and moderation
@@ -15,33 +15,45 @@ require a service beyond static GitHub Pages.
 
 ## Included
 
-- Light/dark themes, responsive landing page, animated reveals, reduced-motion
-  support, product preview, marketplace filters/search and release download CTA.
-- No macros installed on first launch. The catalog offers four curated flows:
+- Light/dark themes, responsive landing page, scroll-driven product and feature
+  motion with reduced-motion support, marketplace filters/search, and a CTA that
+  resolves the latest published NSIS `.exe` through GitHub's Releases API.
+- No macros installed on first launch. The catalog offers five curated flows:
   locked Default Roblox Anti-AFK, Auto-Clicker with a dedicated settings panel,
   Smart Ad Skipper with visible-text OCR, and Da Hood Mobility Flow with
-  configurable movement key chords. Games may restrict automation.
+  configurable movement key chords, plus Local AI Agent Suite. Games may restrict automation.
 - JSON uploads with strict real schema validation, clearly labelled simulated
   review animation, local downloads/counts, ratings, thumbs up/down and reports.
 - Visual block builder: drag palette blocks into nested lists, append through
   keyboard-friendly controls, reorder, inspect fields, duplicate, save,
   import/export JSON. Built-in Anti-AFK is immutable in the UI; editable copies
-  are supported. Starter items remain present after reload.
+  are supported. The local library is empty on a fresh install.
 - Relative/absolute movement, left/right clicks, timed key holds, text typing, drags, waits,
-  randomized delays, finite/infinite nested loops and found/not-found branches.
+  randomized delays, finite/infinite nested loops, while/until, nested if/else,
+  break/continue, variables, arithmetic and numeric comparisons.
 - Text/phrase, RGB color, and uploaded PNG/JPEG/WebP template matching with a
   confidence threshold, pixel-coordinate click results and log feedback. The
   stored template is embedded as PNG in exported JSON and limited to 128 × 128
   pixels. OCR worker
   and WASM load on demand. English traineddata downloads on first use.
+- Exact-pixel RGB checks with per-channel tolerance and conditional found state.
+- Local AI Agent Suite can be installed from the Marketplace. It adds two
+  draggable blocks: bounded screenshot-based navigation and a strict boolean
+  If/Else. A prompt-to-flow generator creates validated JSON blocks for review.
+  Ollama's local `qwen2.5vl:3b` model is pulled only when AI is invoked and
+  explicitly unloaded after the run; a one-minute keep-alive also limits memory
+  residency if the app exits unexpectedly. It is not downloaded on launch.
 - Foreground Windows target selection or global input; cursor bounds checks,
-  three-second countdown, F8 stop, focus-loss stop and two-second watchdog.
+  three-second countdown, F7 stop, focus-loss stop and two-second watchdog.
 - Optional smooth mouse interpolation with easing and configurable duration.
   Humanization adds modest timing and path variation while preserving endpoints;
   it cannot guarantee avoidance of bot or anti-cheat detection.
 - Key chords (for example `w+Shift`) hold keys together and release them in
   reverse order, including during cancellation.
 - New vector branding and a matching multi-resolution Windows icon.
+- Frameless Windows window with draggable translucent titlebar and native
+  minimize, maximize/restore and close controls. Optional synthesized click,
+  completion and error sounds use Web Audio without external media assets.
 - Public GitHub release version-check notification; Pages and NSIS workflows.
 - In-app Marketplace catalog with direct, schema-validated macro installation.
 
@@ -70,6 +82,14 @@ Native Windows app (run separately; do not also run dev:desktop):
 npm run desktop -- dev
 ```
 
+The AI suite requires a separately installed and running [Ollama](https://ollama.com/download/windows)
+service on `127.0.0.1:11434`. Installing the marketplace entry configures the
+blocks and generator in Flowforge; the first AI request downloads the roughly
+3B-parameter model through Ollama. This is a substantial download and needs
+disk space. The application does not bundle or silently install Ollama. The
+model is only loaded into memory when an AI request starts; GPU memory use
+depends on the model/runtime and cannot be guaranteed on a particular card.
+
 Windows installer:
 
 ```bash
@@ -92,7 +112,7 @@ use `npm run dev -w @flowforge/web -- --host 127.0.0.1`.
 The Pages workflow builds the two web entries and commits the output to the
 `split-websites` branch. GitHub Pages serves the branch root, with the marketplace
 under `/marketplace/`, including its catalog and JSON macros. The Windows workflow
-validates Rust and publishes the NSIS installer as release `v0.2.0`.
+validates Rust and publishes the NSIS installer as release `v0.4.0`.
 
 ## Source layout
 
@@ -106,12 +126,16 @@ flowforge/
       src/
         main.jsx                # Isolated Builder, Marketplace and Run views
         vision.js               # Tesseract OCR, color and image matching
+        pixel-check.js          # Pure exact-pixel color match
+        audio.js                # Native WebView audio cues
+        local-ai.js             # Constrained model output and generator
         template-match.js       # Cancellable pixel template search and confidence
         assets/flowforge-mark.svg # Vector logo
         style.css               # Adaptive light/dark desktop interface
       public/ocr/               # Generated worker/WASM, not committed
       src-tauri/
         src/main.rs             # Native session/input/capture/watchdog commands
+        src/ai.rs               # Fixed local Ollama bridge and license check
         src/windows.rs          # Win32 enumeration and foreground/client bounds
         capabilities/default.json
         icons/icon.ico
@@ -139,6 +163,7 @@ flowforge/
     auto-clicker.json
     ad-skipper.json
     da-hood-mobility.json
+    local-ai-suite.json
   scripts/
     ocr-assets.mjs              # Copies installed open-source OCR assets
     check-config.mjs            # Repository/version readiness check
@@ -160,7 +185,14 @@ area; relative movements use the current cursor position. Global mode uses
 screen coordinates. Native input is ordinary foreground input, not background
 window injection. The target must be in front after the countdown, and the
 cursor must stay inside its client area. Begin with a test window and finite
-loops. Press F8 at any time to release held inputs and stop the session.
+loops. Press F7 at any time to release held inputs and stop the session; F8
+remains an undocumented compatibility shortcut for existing users.
+
+AI navigation accepts only a single validated click, key, text, scroll, done,
+or fail action per screenshot. It refuses clicks outside the captured image,
+limits each block to at most 20 steps, and checks the native focus interlock
+before each input. Model decisions can still be inaccurate. Review generated
+flows, use a selected window, and supervise runs.
 
 OCR matches a whole word or phrase within a recognized line; it clicks the
 center of the bounding box only if each word meets the confidence threshold.
@@ -187,9 +219,17 @@ antivirus and does not prove safe intent. Local stats are not real community
 aggregates. See [production marketplace plan](docs/PRODUCTION-MARKETPLACE.md)
 for the separately hosted service needed for shared uploads, votes and reports.
 
+The local model listing currently declares Apache 2.0 and Ollama is MIT;
+Flowforge checks the model-reported Apache 2.0 license before use. Lucide icons
+use the permissive ISC license, with some Feather-derived icons under MIT.
+Tesseract.js is Apache 2.0. A full transitive dependency notice/SBOM audit is
+still required before claiming every packaged component has only MIT or Apache
+2.0 terms. No model weights or Ollama executable are redistributed here.
+
 ## Verification and limits
 
-The repository tests cover schema rejection, control flow, vision coordinates,
+The repository tests cover schema rejection, nested control flow, variable math,
+pixel checks, vision coordinates,
 template confidence/centering, key chords, smooth endpoints, and cancellation.
 GitHub Actions runs the web and desktop frontend builds, Rust check, and NSIS
 installer packaging. Native input, game-specific behavior and OCR/template
