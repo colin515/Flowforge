@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Local AI Agent Suite",
+  "blocks": [
+    {
+      "type": "aiIf",
+      "prompt": "Is the sound settings menu visible?",
+      "then": [
+        {
+          "type": "aiNavigate",
+          "goal": "Turn the sound off in this application's settings",
+          "maxSteps": 8
+        }
+      ],
+      "else": [
+        {
+          "type": "aiNavigate",
+          "goal": "Open sound settings and turn the sound off",
+          "maxSteps": 8
+        }
+      ]
+    }
+  ]
+}

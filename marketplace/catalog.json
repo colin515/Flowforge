@@ -32,6 +32,14 @@
       "description": "Configurable movement key chords and short bursts for Roblox Da Hood. Keep its window focused and review game rules.",
       "url": "https://colin515.github.io/Flowforge/marketplace/macros/da-hood-mobility.json",
       "builtIn": true
+    },
+    {
+      "id": "local-ai-suite",
+      "name": "Local AI Agent Suite",
+      "category": "AI",
+      "description": "On-demand local vision agent with prompt-to-flow generation, screen decisions, and bounded navigation. Requires Ollama; model downloads on first use.",
+      "url": "https://colin515.github.io/Flowforge/marketplace/macros/local-ai-suite.json",
+      "builtIn": true
     }
   ]
 }
