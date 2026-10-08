@@ -7,7 +7,7 @@ landing page. Tauri 2 + Rust + React power the desktop; React/Vite and CSS power
 the GitHub Pages site. Tesseract.js supplies open-source OCR. Plain CSS keeps the
 styling dependency footprint small; Lucide provides consistent SVG icons.
 
-**Status:** v0.4.0 opens to an empty local library. Users create, import or install
+**Status:** v0.4.1 opens to an empty local library. Users create, import or install
 macros from the catalog. Builder, Marketplace, and Run & Logs remain isolated
 views. The Windows installer is built by GitHub Actions. Marketplace
 engagement remains local to each device; shared accounts, counts, and moderation
@@ -112,7 +112,7 @@ use `npm run dev -w @flowforge/web -- --host 127.0.0.1`.
 The Pages workflow builds the two web entries and commits the output to the
 `split-websites` branch. GitHub Pages serves the branch root, with the marketplace
 under `/marketplace/`, including its catalog and JSON macros. The Windows workflow
-validates Rust and publishes the NSIS installer as release `v0.4.0`.
+validates Rust and publishes the NSIS installer as release `v0.4.1`.
 
 ## Source layout
 

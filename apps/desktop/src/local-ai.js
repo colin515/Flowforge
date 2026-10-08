@@ -45,9 +45,24 @@ export class LocalAI {
     this.ready = true;
     this.onStatus("Local AI model ready");
   }
+  async compactImage(image) {
+    if (!image || !image.startsWith("data:image/png;base64,")) return image;
+    const source = new Image();
+    source.src = image;
+    await source.decode();
+    const largest = Math.max(source.width, source.height);
+    if (largest <= 1280) return image;
+    const scale = 1280 / largest;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(source.width * scale));
+    canvas.height = Math.max(1, Math.round(source.height * scale));
+    canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png");
+  }
   async ask(prompt, image, maxTokens = 256) {
     await this.prepare();
-    const { text } = await this.interruptible(this.bridge.generate({ prompt, image, maxTokens }));
+    const compactImage = await this.compactImage(image);
+    const { text } = await this.interruptible(this.bridge.generate({ prompt, image: compactImage, maxTokens }));
     return text;
   }
   async decide(goal, frame) {

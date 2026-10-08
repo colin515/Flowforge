@@ -58,7 +58,11 @@ pub async fn ai_generate(request: GenerateRequest) -> Result<GenerateResponse, S
     if request.prompt.len() > 6000 { return Err("AI prompt is too long".into()); }
     let mut payload = json!({
         "model": MODEL, "prompt": request.prompt, "format": "json", "stream": false,
-        "keep_alive": "1m", "options": {"temperature": 0, "num_predict": request.max_tokens.unwrap_or(256).clamp(32, 1536)}
+        "keep_alive": "1m", "options": {
+            "temperature": 0,
+            "num_ctx": 8192,
+            "num_predict": request.max_tokens.unwrap_or(256).clamp(32, 1536)
+        }
     });
     if let Some(image) = request.image {
         let raw = image.strip_prefix("data:image/png;base64,").ok_or("Only captured PNG screenshots are accepted")?;
