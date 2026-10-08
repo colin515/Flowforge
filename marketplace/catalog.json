@@ -24,6 +24,14 @@
       "description": "Find visible Skip text with OCR and click the matched label.",
       "url": "https://colin515.github.io/Flowforge/marketplace/macros/ad-skipper.json",
       "builtIn": true
+    },
+    {
+      "id": "da-hood-mobility",
+      "name": "Da Hood Mobility Flow",
+      "category": "Gaming",
+      "description": "Configurable movement key chords and short bursts for Roblox Da Hood. Keep its window focused and review game rules.",
+      "url": "https://colin515.github.io/Flowforge/marketplace/macros/da-hood-mobility.json",
+      "builtIn": true
     }
   ]
 }
