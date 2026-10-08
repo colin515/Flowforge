@@ -14,7 +14,7 @@ extern "system"{
  fn GetClientRect(hwnd:isize,rect:*mut Rect)->i32;fn ClientToScreen(hwnd:isize,point:*mut Point)->i32;
 }
 #[derive(Serialize)]pub struct WindowInfo{pub id:String,pub title:String,pub pid:u32}
-pub fn enumerate()->Vec<WindowInfo>{let mut result=Vec::new();unsafe{EnumWindows(visit,&mut result as *mut Vec<WindowInfo> as isize);}result.sort_by(|a,b|a.title.cmp(&b.title));result}
+pub fn enumerate()->Vec<WindowInfo>{let mut result: Vec<WindowInfo> = Vec::new();unsafe{EnumWindows(visit,&mut result as *mut Vec<WindowInfo> as isize);}result.sort_by(|a,b|a.title.cmp(&b.title));result}
 unsafe extern "system" fn visit(hwnd:isize,data:isize)->i32{
  if IsWindowVisible(hwnd)==0||IsIconic(hwnd)!=0{return 1}let mut text=[0u16;1024];let len=GetWindowTextW(hwnd,text.as_mut_ptr(),text.len() as i32);let mut pid=0;GetWindowThreadProcessId(hwnd,&mut pid);
  if len>0&&pid!=std::process::id(){let result=&mut *(data as *mut Vec<WindowInfo>);result.push(WindowInfo{id:hwnd.to_string(),title:String::from_utf16_lossy(&text[..len as usize]),pid})}1
