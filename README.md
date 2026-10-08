@@ -32,6 +32,7 @@ marketplace is a working browser-local demo, not a connected community service.
 - Optional humanization: ±10% wait variation and up to 2 px mouse-path curvature,
   preserving endpoints. Random variation does not guarantee detection avoidance.
 - Public GitHub release version-check notification; Pages and NSIS workflows.
+- In-app Marketplace catalog with direct, schema-validated macro installation.
 
 ## Quick start
 
@@ -72,39 +73,15 @@ use `npm run dev -w @flowforge/web -- --host 127.0.0.1`.
 
 ## GitHub repository and hosting
 
-1. Set `config.json` repository to `YOUR_USERNAME/your-repo`. The website download
-   CTA points directly to `https://github.com/OWNER/REPO/releases/latest`.
-   Before this is set, the page honestly shows a source-preview setup message.
-2. Create an empty GitHub repo, then run these commands in this folder:
+- Repository: https://github.com/colin515/Flowforge
+- Landing page: https://colin515.github.io/Flowforge/
+- Marketplace: https://colin515.github.io/Flowforge/marketplace.html
+- Latest Windows release: https://github.com/colin515/Flowforge/releases/latest
 
-```bash
-git init
-git add .
-git commit -m "Initial Flowforge starter"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/your-repo.git
-git push -u origin main
-```
-
-3. Enable **Settings → Pages → Source → GitHub Actions**. The Pages workflow
-   builds the web workspace and publishes it. Relative Vite asset paths support
-   repository Pages URLs. There is no client-side route fallback to configure.
-4. Keep version fields aligned in `config.json`, root/desktop package.json,
-   src-tauri/Cargo.toml and tauri.conf.json. `node scripts/check-config.mjs`
-   validates release configuration.
-5. Push a matching version tag (initially `v0.1.0`):
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The Windows workflow checks Rust and builds the NSIS executable, then creates a
-**draft** GitHub release. Download/test its installer and publish the draft to
-make it accessible through the website and update checker. Release updates are
-notifications and manual downloads, not unattended installation. Code signing
-is not configured; add your certificate/signing configuration before public
-production distribution. No GitHub credentials are needed inside the app.
+The Pages workflow builds both web entries and publishes the landing page,
+marketplace, catalog and downloadable JSON macros. The Windows workflow validates
+Rust and creates the NSIS installer. Release tags use the matching app version,
+for example `v0.1.0`.
 
 ## Source layout
 
@@ -129,10 +106,13 @@ flowforge/
         build.rs
         tauri.conf.json
       index.html
+      marketplace.html
+      public/catalog.json
+      public/macros/*.json
       package.json
       vite.config.js
     web/
-      src/main.jsx              # Landing page and local marketplace
+      src/main.jsx              # Landing page and separate marketplace
       src/style.css             # Glass navigation, animation, responsive themes
       index.html
       package.json

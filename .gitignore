@@ -1,0 +1,7 @@
+node_modules/
+dist/
+target/
+*.log
+apps/desktop/public/ocr/
+.env*
+!.env.example

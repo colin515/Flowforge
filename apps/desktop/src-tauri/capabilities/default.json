@@ -1,0 +1,10 @@
+{
+  "identifier": "main",
+  "description": "Only the local main window can use core APIs. No shell, filesystem, or remote-page capabilities.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}
