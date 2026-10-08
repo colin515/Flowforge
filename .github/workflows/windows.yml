@@ -1,3 +1,5 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+.github/workflows/windows.yml 25ms (unchanged)
 name: Windows build and release
 on:
   push:
@@ -34,7 +36,7 @@ jobs:
           name: Flowforge-Windows-installer
           path: apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main'
     needs: check
     runs-on: ubuntu-latest
     permissions:
@@ -46,6 +48,9 @@ jobs:
           path: installer
       - uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          tag_name: v0.1.0
+          name: Flowforge v0.1.0
+          draft: false
           generate_release_notes: true
+          overwrite_files: true
           files: installer/*-setup.exe
