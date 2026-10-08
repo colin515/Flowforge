@@ -1,6 +1,6 @@
 # Flowforge
 
-[**Website**](https://colin515.github.io/Flowforge/) · [**Marketplace**](https://colin515.github.io/Flowforge/marketplace.html) · [**Windows downloads**](https://github.com/colin515/Flowforge/releases/latest)
+[**Website**](https://colin515.github.io/Flowforge/) · [**Marketplace**](https://colin515.github.io/Flowforge/marketplace/) · [**Windows downloads**](https://github.com/colin515/Flowforge/releases/latest)
 
 A repository-ready Windows automation starter and an Apple-inspired community
 landing page. Tauri 2 + Rust + React power the desktop; React/Vite and CSS power
@@ -77,7 +77,7 @@ use `npm run dev -w @flowforge/web -- --host 127.0.0.1`.
 
 - Repository: https://github.com/colin515/Flowforge
 - Landing page: https://colin515.github.io/Flowforge/
-- Marketplace: https://colin515.github.io/Flowforge/marketplace.html
+- Marketplace: https://colin515.github.io/Flowforge/marketplace/
 - Latest Windows release: https://github.com/colin515/Flowforge/releases/latest
 
 The Pages workflow builds both web entries and publishes the landing page,
