@@ -244,7 +244,7 @@ function App() {
     setMarketStatus("Loading marketplace…");
     try {
       const response = await fetch(
-        "https://colin515.github.io/Flowforge/catalog.json",
+        "https://colin515.github.io/Flowforge/marketplace/catalog.json",
         { cache: "no-store" },
       );
       if (!response.ok) throw new Error("Marketplace is not available yet");
@@ -595,7 +595,7 @@ function App() {
                   </p>
                 </div>
                 <a
-                  href="https://colin515.github.io/Flowforge/marketplace.html"
+                  href="https://colin515.github.io/Flowforge/marketplace/"
                   target="_blank"
                   rel="noreferrer"
                 >
