@@ -8,7 +8,7 @@ import {
 import { Runner } from "../packages/shared/runner.js";
 import { matchTemplate } from "../apps/desktop/src/template-match.js";
 import { checkPixel } from "../apps/desktop/src/pixel-check.js";
-import { parseAction, parseDecision } from "../apps/desktop/src/local-ai.js";
+import { LocalAI, parseAction, parseDecision } from "../apps/desktop/src/local-ai.js";
 test("math, comparisons and nested continue/break execute in the nearest loop", async () => {
   const events = [];
   const macro = { version: 1, name: "Count", vars: { counter: 0, limit: 5 }, blocks: [
@@ -209,6 +209,19 @@ test("AI navigator halts at its step limit", async () => {
   runner.wait = async () => {};
   await assert.rejects(runner.run({ blocks: [{ type: "aiNavigate", goal: "Scroll", maxSteps: 2 }] }), /did not verify completion/);
   assert.equal(count, 2);
+});
+test("stopping an AI request releases the runner without waiting for inference", async () => {
+  let began;
+  const pending = new Promise((resolve) => { began = resolve; });
+  const ai = new LocalAI({ prepare: async () => {}, generate: () => pending, unload: async () => {} });
+  const runner = new Runner({ check: async () => {}, capture: async () => ({ width: 10, height: 10, data: "png" }),
+    release: async () => {} }, {}, () => {}, { ai });
+  runner.wait = async () => {};
+  const running = runner.run({ blocks: [{ type: "aiIf", prompt: "Is it visible?", then: [], else: [] }] });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  runner.stop();
+  await assert.rejects(running, /Stopped/);
+  began({ text: '{"answer":true}' });
 });
 test("smooth movement interpolates and ends at the intended endpoint", async () => {
   const inputs = [];

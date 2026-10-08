@@ -303,3 +303,4 @@ small { font-size: 11px; color: var(--muted); letter-spacing: .08em; font-weight
 .ai-panel textarea { width: 100%; min-height: 110px; resize: vertical; border-radius: 14px; border: 1px solid var(--line); background: var(--raised); color: var(--ink); padding: 16px; font: inherit; font-size: 13px; line-height: 1.5; }
 .ai-panel form button { justify-self: start; }
 .ai-panel .ai-disclosure { border-top: 1px solid var(--line); padding-top: 17px; margin-top: 24px; }
+.ai-panel .ai-service { display: inline-flex; border: 1px solid var(--line); background: var(--raised); border-radius: 999px; padding: 7px 12px; font-size: 11px; }

@@ -28,17 +28,26 @@ export function parseAction(text, frame) {
   return value;
 }
 export class LocalAI {
-  constructor(bridge, onStatus = () => {}) { this.bridge = bridge; this.onStatus = onStatus; this.ready = false; }
+  constructor(bridge, onStatus = () => {}) { this.bridge = bridge; this.onStatus = onStatus; this.ready = false; this.abort = new AbortController(); }
+  cancel() { this.abort.abort(); }
+  async interruptible(promise) {
+    if (this.abort.signal.aborted) throw new Error("Stopped");
+    return new Promise((resolve, reject) => {
+      const onStop = () => reject(new Error("Stopped"));
+      this.abort.signal.addEventListener("abort", onStop, { once: true });
+      Promise.resolve(promise).then(resolve, reject).finally(() => this.abort.signal.removeEventListener("abort", onStop));
+    });
+  }
   async prepare() {
     if (this.ready) return;
     this.onStatus("Checking local AI model · Ollama must be running");
-    await this.bridge.prepare();
+    await this.interruptible(this.bridge.prepare());
     this.ready = true;
     this.onStatus("Local AI model ready");
   }
   async ask(prompt, image, maxTokens = 256) {
     await this.prepare();
-    const { text } = await this.bridge.generate({ prompt, image, maxTokens });
+    const { text } = await this.interruptible(this.bridge.generate({ prompt, image, maxTokens }));
     return text;
   }
   async decide(goal, frame) {

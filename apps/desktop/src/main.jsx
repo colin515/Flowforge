@@ -289,7 +289,7 @@ function App() {
     finally { await ai.unload().catch(() => {}); setAiBusy(false); }
   }
   async function run() {
-    if (runBusy.current) return;
+    if (runBusy.current || aiBusy) return;
     audio.current.activate();
     runBusy.current = true; setView("run");
     try {
@@ -409,6 +409,16 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
   const [variableName, setVariableName] = useState("");
   const [variableInitial, setVariableInitial] = useState("0");
   const [aiGoal, setAiGoal] = useState("");
+  const [aiStatus, setAiStatus] = useState("");
+  useEffect(() => {
+    if (builderPane !== "ai" || !native) return;
+    let mounted = true;
+    setAiStatus("Checking local Ollama service…");
+    invoke("ai_status").then((present) => {
+      if (mounted) setAiStatus(present ? "Model installed · loads only when used" : "Model downloads on first AI request");
+    }).catch(() => { if (mounted) setAiStatus("Ollama is not running. Install it from ollama.com/download/windows and start the service."); });
+    return () => { mounted = false; };
+  }, [builderPane, native]);
   const variables = macro.vars ?? {};
   function addVariable(event) {
     event.preventDefault();
@@ -450,7 +460,7 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
         <button className="ghost" title="Export JSON" onClick={() => downloadJSON(macro)}><Download size={16} /> Export</button>
         <button className="ghost" title="Save macro" disabled={locked || running} onClick={save}><Save size={16} /> Save</button>
         {!locked && <button className="ghost danger" title="Delete macro" disabled={running} onClick={deleteSelected}><Trash2 size={16} /> Delete</button>}
-        <button className="primary" onClick={run} disabled={running}><Play size={15} fill="currentColor" /> Run flow</button></div></div>
+        <button className="primary" onClick={run} disabled={running || aiBusy}><Play size={15} fill="currentColor" /> Run flow</button></div></div>
     <div className="builder-tabs"><button className={builderPane === "blocks" ? "selected" : ""} onClick={() => setBuilderPane("blocks")}>Block builder</button>
       <button className={builderPane === "variables" ? "selected" : ""} onClick={() => setBuilderPane("variables")}>Variables <span>{Object.keys(variables).length}</span></button>
       {aiInstalled && <button className={builderPane === "ai" ? "selected" : ""} onClick={() => setBuilderPane("ai")}>AI Generator</button>}
@@ -464,6 +474,7 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
         <button className="secondary" disabled={locked || running}><Plus size={15} /> Add variable</button></form></div> :
     builderPane === "ai" && aiInstalled ? <div className="ai-panel surface"><span className="featureicon blue"><ScanLine size={24} /></span>
       <small>LOCAL AI · QWEN2.5-VL 3B</small><h2>Describe a flow.</h2><p>Turn a plain-language goal into a validated block tree. The model loads only when you generate or run an AI block, then unloads. Ollama must be installed and running; the model downloads on first use.</p>
+      <p className="ai-service" role="status">{aiStatus}</p>
       <form onSubmit={(event) => { event.preventDefault(); generateFlow(aiGoal); }}><label htmlFor="ai-goal">WHAT SHOULD THIS FLOW DO?</label>
         <textarea id="ai-goal" minLength={3} maxLength={500} required value={aiGoal} onChange={(event) => setAiGoal(event.target.value)} placeholder="Find the sound settings, then turn the volume off" />
         <button className="primary" disabled={!native || aiBusy || running || !aiGoal.trim()}>{aiBusy ? "Preparing local model…" : "Generate blocks"}</button></form>

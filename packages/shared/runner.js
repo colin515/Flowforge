@@ -13,6 +13,7 @@ export class Runner {
   stop() {
     this.running = false;
     this.controller?.abort();
+    this.options.ai?.cancel?.();
   }
   async check() {
     if (!this.running) throw new Error("Stopped");
@@ -39,7 +40,7 @@ export class Runner {
     } finally {
       this.stop();
       await this.bridge.release();
-      await this.options.ai?.unload().catch((error) => this.options.onAIStatus?.(`AI unload failed: ${error}`));
+      this.options.ai?.unload().catch((error) => this.options.onAIStatus?.(`AI unload failed: ${error}`));
     }
   }
   operand(value) {
@@ -214,6 +215,7 @@ export class Runner {
           const answer = await this.options.ai.decide(b.prompt, frame);
           await this.check();
           this.found = answer;
+          this.options.onAIStatus?.(`AI condition: ${answer ? "true" : "false"}`);
           const control = await this.blocks(answer ? b.then : b.else, loopDepth);
           if (control) return control;
           break;
@@ -254,7 +256,7 @@ export class Runner {
             await this.wait(350);
           }
           if (!done) throw new Error(`Local AI did not verify completion within ${b.maxSteps} steps`);
-          this.options.onAIStatus?.("Local AI verified the task");
+          this.options.onAIStatus?.("Local AI marked the task complete");
           break;
         }
         case "checkPixel": {
