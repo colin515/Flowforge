@@ -11,7 +11,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         home: resolve(import.meta.dirname, "index.html"),
-        marketplace: resolve(import.meta.dirname, "marketplace.html"),
+        marketplace: resolve(import.meta.dirname, "marketplace/index.html"),
       },
     },
   },
