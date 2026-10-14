@@ -634,12 +634,13 @@ function RunView({ macro, windows, target, setTarget, refreshWindows, humanize, 
     <span className={`run-badge ${running ? "running" : ""}`}><i className={`status-dot ${running ? "live" : ""}`} /> {running ? "Running" : "Idle"}</span></div>
     <div className="run-grid"><div className="run-controls surface"><h2>Execution settings</h2><p>Selected flow: <strong>{macro?.name ?? "No macro selected"}</strong></p>
       <label htmlFor="target-window">TARGET WINDOW</label><div className="target-select"><select id="target-window" disabled={running} value={target} onChange={(event) => setTarget(event.target.value)}>
-        <option value="global">Global Desktop Input</option>{windows.map((window) => <option key={window.id} value={window.id}>{window.title} · PID {window.pid}</option>)}</select>
+        <option value="" disabled>Choose an application…</option><option value="global">Entire desktop (advanced)</option>{windows.map((window) => <option key={window.id} value={window.id}>{window.title} · PID {window.pid}</option>)}</select>
         <button aria-label="Refresh windows" title="Refresh windows" disabled={running} onClick={refreshWindows}><RefreshCw size={16} /></button></div>
-      <div className="safety-note"><ShieldCheck size={19} /><div><strong>{target === "global" ? "Global mode" : "Focus protection active"}</strong><p>{target === "global" ? "Input can reach your entire desktop. Choose a window for focus protection." : "Input stops as soon as this window loses focus."}</p></div></div>
+      <div className="safety-note"><ShieldCheck size={19} /><div><strong>{!target ? "No target selected" : target === "global" ? "Entire desktop" : "Selected app only"}</strong>
+        <p>{!target ? "Choose an app to send its mouse and keyboard actions there." : target === "global" ? "Actions and AI screenshots may affect your entire primary screen. Use deliberately." : "FlowForge attempts to focus this window when starting. Focus loss stops all input. If Windows prevents switching, focus the app during the countdown."}</p></div></div>
       <label className="toggle-row"><input type="checkbox" disabled={running} checked={humanize} onChange={(event) => setHumanize(event.target.checked)} /><span>Vary timing and mouse path slightly</span></label>
       <label className="toggle-row"><Volume2 size={17} /><input type="checkbox" checked={sounds} onChange={(event) => { if (event.target.checked) activateSound(); setSounds(event.target.checked); }} /><span>Subtle action and event sounds</span></label>
-      <div className="run-buttons">{running ? <button className="stop" onClick={stop}><Square size={16} fill="currentColor" /> Stop · F7</button> : <button className="primary" onClick={run} disabled={!native || !macro}><Play size={16} fill="currentColor" /> Start flow</button>}</div>
+      <div className="run-buttons">{running ? <button className="stop" onClick={stop}><Square size={16} fill="currentColor" /> Stop · F7</button> : <button className="primary" onClick={run} disabled={!native || !macro || !macro.blocks.length || !target}><Play size={16} fill="currentColor" /> Start flow</button>}</div>
       <p className="shortcut">F7 · Emergency stop from anywhere</p></div>
       <div className="run-monitor surface"><div className="monitor-header"><div><small>LIVE ACTIVITY</small><h2>Execution log</h2></div><span>{step || status}</span></div>
         <div className="terminal" role="log" aria-live="polite">{logs.map((entry, index) => <div className={`log-line ${entry.kind}`} key={`${entry.time}-${index}`}><time>{entry.time}</time><span>{entry.kind.toUpperCase()}</span><p>{entry.message}</p></div>)}<div ref={logEnd} /></div></div></div></section>;
@@ -652,10 +653,12 @@ function BlockList({
   add,
   remove,
   reorder,
+  insertAfter,
+  duplicateBlock,
   dropBlock,
   disabled,
 }) {
-  const props = { chosen, select, add, remove, reorder, dropBlock, disabled };
+  const props = { chosen, select, add, insertAfter, duplicateBlock, remove, reorder, dropBlock, disabled };
   const [over, setOver] = useState(false);
   return (
     <div
@@ -698,7 +701,7 @@ function BlockList({
               <button className="blockselect" onClick={() => select(path)}>
                 <span className="draghandle" draggable={!disabled} aria-label="Drag block"
                   onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.setData("application/x-flowforge", JSON.stringify({ type: "existing", path })); }}><GripVertical size={13} /></span>
-                <b>{labels[b.type]}</b>
+                <span className="step-order">{i + 1}</span><b>{labels[b.type]}</b>
                 <span>
                   {b.type === "wait"
                     ? `${b.ms} ms ± ${b.jitter}`
@@ -740,6 +743,12 @@ function BlockList({
                 </span>
               </button>
               <div className="blocktools">
+                <select className="quick-insert" aria-label={`Add action after ${labels[b.type]}`} title="Insert a step directly after this one"
+                  disabled={disabled} value="" onChange={(event) => insertAfter(path, event.target.value)}>
+                  <option value="" disabled>+ Add</option>
+                  {Object.keys(defaults).map((type) => <option key={type} value={type}>{labels[type]}</option>)}
+                </select>
+                <button aria-label="Duplicate block" title="Duplicate step" disabled={disabled} onClick={() => duplicateBlock(path)}><Copy size={13} /></button>
                 <button
                   aria-label="Move block up"
                   disabled={disabled || i === 0}
@@ -791,9 +800,8 @@ function BlockList({
         );
       })}
       <div className="dropzone">
-        {list.length === 0
-          ? "Drop your first block here"
-          : "Drop to append a block"}
+        <div><strong>{list.length === 0 ? "Add your first action" : "Add another action"}</strong>
+          <small>{list.length === 0 ? "Choose from the menu or drag one here" : "Add to this sequence or drop anywhere above"}</small></div>
         {!disabled && (
           <select
             aria-label="Add a block to this list"
@@ -801,7 +809,7 @@ function BlockList({
             onChange={(e) => add(listPath, e.target.value)}
           >
             <option value="" disabled>
-              + Add block
+              + Choose step
             </option>
             {Object.keys(defaults).map((t) => (
               <option key={t} value={t}>
