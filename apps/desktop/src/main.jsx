@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
-  Activity, ArrowDown, ArrowUp, Check, ChevronRight, Copy,
+  Activity, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Check, ChevronRight, Copy,
   Download, ExternalLink, Flag, GripVertical, Layers, Lock, Moon,
   MousePointer2, Play, Plus, RefreshCw, Save, ScanLine, Search,
   ShieldCheck, Square, Star, Store, Sun, ThumbsDown, ThumbsUp, Image as ImageIcon,
@@ -450,12 +450,25 @@ function EmptyBuilder({ create, openMarket, importFile }) {
       <button className="secondary" onClick={openMarket}><Store size={16} /> Browse marketplace</button>
       <button className="ghost" onClick={importFile}><Upload size={16} /> Import JSON</button></div></section>;
 }
-function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, deleteSelected, record, builderPane, setBuilderPane, run, id, selected, aiInstalled, aiBusy, generateFlow, native }) {
+function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, insertAfter, duplicateBlock, dropBlock, deleteSelected, record, undo, redo, canUndo, canRedo, unsaved, builderPane, setBuilderPane, run, id, selected, aiInstalled, aiBusy, generateFlow, native, windows, target, setTarget, refreshWindows }) {
   const clicker = id === "auto-clicker" || selected.sourceId === "auto-clicker";
   const [variableName, setVariableName] = useState("");
   const [variableInitial, setVariableInitial] = useState("0");
   const [aiGoal, setAiGoal] = useState("");
   const [aiStatus, setAiStatus] = useState("");
+  const [paletteSearch, setPaletteSearch] = useState("");
+  const groups = [
+    ["AI AGENT", ["aiNavigate", "aiIf"]],
+    ["MOUSE & KEYBOARD", ["move", "click", "key", "keyChord", "text", "drag"]],
+    ["SCREEN RECOGNITION", ["findText", "findColor", "findImage", "checkPixel"]],
+    ["LOOPS & CONDITIONS", ["loop", "while", "ifFound", "ifCompare", "break", "continue", "wait"]],
+    ["VARIABLES & MATH", ["setVar", "math"]],
+  ].filter(([name]) => name !== "AI AGENT" || aiInstalled);
+  const query = paletteSearch.trim().toLowerCase();
+  const countSteps = (blocks) => blocks.reduce((count, block) => count + 1 +
+    ["body", "then", "else"].reduce((sum, branch) => sum +
+      (Array.isArray(block[branch]) ? countSteps(block[branch]) : 0), 0), 0);
+  const steps = countSteps(macro.blocks);
   useEffect(() => {
     if (builderPane !== "ai" || !native) return;
     let mounted = true;
@@ -501,12 +514,24 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
   }
   return <section className="builder-view" aria-label="Visual macro builder">
     <div className="view-heading"><div><small>VISUAL AUTOMATION</small><input className="flowname" aria-label="Macro name" disabled={locked || running} value={macro.name}
-      onChange={(event) => mutate((copy) => { copy.name = event.target.value; })} /><p>{locked ? "Locked starter · duplicate to make changes" : "Create your workflow, block by block."}</p></div>
-      <div className="heading-actions"><button className="ghost" title="Duplicate macro" disabled={running} onClick={() => duplicate()}><Copy size={16} /> Duplicate</button>
+      onChange={(event) => mutate((copy) => { copy.name = event.target.value; })} /><p>{locked ? "Locked starter · duplicate to make changes" : `${steps} action${steps === 1 ? "" : "s"} · ${unsaved ? "Unsaved changes" : "All changes saved"}`}</p></div>
+      <div className="heading-actions">
+        <button className="ghost compact" title="Undo" aria-label="Undo last change" disabled={!canUndo || running} onClick={undo}><ArrowLeft size={16} /> Undo</button>
+        <button className="ghost compact" title="Redo" aria-label="Redo last change" disabled={!canRedo || running} onClick={redo}><ArrowRight size={16} /> Redo</button>
+        <button className="ghost" title="Duplicate macro" disabled={running} onClick={() => duplicate()}><Copy size={16} /> Duplicate</button>
         <button className="ghost" title="Export JSON" onClick={() => downloadJSON(macro)}><Download size={16} /> Export</button>
         <button className="ghost" title="Save macro" disabled={locked || running} onClick={save}><Save size={16} /> Save</button>
         {!locked && <button className="ghost danger" title="Delete macro" disabled={running} onClick={deleteSelected}><Trash2 size={16} /> Delete</button>}
-        <button className="primary" onClick={run} disabled={running || aiBusy}><Play size={15} fill="currentColor" /> Run flow</button></div></div>
+        <button className="primary" onClick={run} disabled={!native || running || aiBusy || !macro.blocks.length}><Play size={15} fill="currentColor" /> Run flow</button></div></div>
+    <div className="builder-target surface">
+      <div className="target-label"><MousePointer2 size={18} /><div><strong>Control target</strong><span>Select the app FlowForge should operate. It will attempt to focus that window before the 3-second countdown.</span></div></div>
+      <div className="target-picker"><select aria-label="Choose an application to automate" value={target} disabled={!native || running}
+        onChange={(event) => setTarget(event.target.value)}>
+        <option value="">Choose an application…</option>
+        {windows.map((win) => <option key={win.id} value={win.id}>{win.title}</option>)}
+        <option value="global">Entire desktop (advanced)</option>
+      </select><button className="ghost" type="button" disabled={!native || running} title="Refresh application list" aria-label="Refresh application list" onClick={refreshWindows}><RefreshCw size={16} /></button></div>
+    </div>
     <div className="builder-tabs"><button className={builderPane === "blocks" ? "selected" : ""} onClick={() => setBuilderPane("blocks")}>Block builder</button>
       <button className={builderPane === "variables" ? "selected" : ""} onClick={() => setBuilderPane("variables")}>Variables <span>{Object.keys(variables).length}</span></button>
       {aiInstalled && <button className={builderPane === "ai" ? "selected" : ""} onClick={() => setBuilderPane("ai")}>AI Generator</button>}
@@ -532,17 +557,26 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
       <label>Mouse button<select disabled={running || locked} value={macro.blocks[0]?.body?.[0]?.button ?? "left"}
         onChange={(event) => mutate((copy) => { copy.blocks[0].body[0].button = event.target.value; })}><option value="left">Left button</option><option value="right">Right button</option></select></label>
       <button className="secondary" onClick={save}>{id === "auto-clicker" ? "Save configured copy" : "Save changes"}</button></div> :
-      <div className="builder-grid surface"><div className="palette"><small>BLOCK LIBRARY</small>
-        <div className="palette-group"><strong>CONTROL</strong>{["loop", "while", "ifFound", "ifCompare", "break", "continue", "wait"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        <div className="palette-group"><strong>VARIABLES</strong>{["setVar", "math"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        <div className="palette-group"><strong>INPUT & ACTIONS</strong>{["move", "click", "key", "keyChord", "text", "drag"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        <div className="palette-group"><strong>VISION</strong>{["findText", "findColor", "findImage", "checkPixel"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        {aiInstalled && <div className="palette-group"><strong>LOCAL AI</strong>{["aiNavigate", "aiIf"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>}
-        <p>Drag into any list to nest blocks, or click to append.</p></div>
+      <div className="builder-grid surface"><div className="palette"><div className="palette-top"><small>ACTION LIBRARY</small><span>{Object.keys(defaults).length} BLOCKS</span></div>
+        <div className="palette-search"><Search size={15} /><input aria-label="Find an action" placeholder="Find an action…" value={paletteSearch}
+          onChange={(event) => setPaletteSearch(event.target.value)} /></div>
+        {groups.map(([name, types]) => {
+          const matching = types.filter((type) => !query || labels[type].toLowerCase().includes(query) || name.toLowerCase().includes(query));
+          return matching.length ? <div key={name} className="palette-group"><strong>{name}</strong>
+            {matching.map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}
+          </div> : null;
+        })}
+        {query && !groups.some(([name, types]) => types.some((type) => labels[type].toLowerCase().includes(query) || name.toLowerCase().includes(query))) &&
+          <p className="palette-empty">No actions found. Try another search.</p>}
+        <p className="palette-help">Click to add a step, or drag it to a specific position or branch.</p></div>
         <div className="canvas"><div className="canvaslabel"><i className="status-dot live" /> WHEN FLOW STARTS <span>{locked ? <><Lock size={12} /> LOCKED</> : "EDITABLE FLOW"}</span></div>
-          <BlockList list={macro.blocks} listPath={["blocks"]} chosen={path} select={setPath} add={add} remove={remove} reorder={reorder} dropBlock={dropBlock} disabled={locked || running} />
+          <div className="flow-progress"><span>START</span><div className="flow-progress-line" /><span>{steps} STEPS</span></div>
+          <BlockList list={macro.blocks} listPath={["blocks"]} chosen={path} select={setPath} add={add} insertAfter={insertAfter} duplicateBlock={duplicateBlock} remove={remove} reorder={reorder} dropBlock={dropBlock} disabled={locked || running} />
+          <div className="flow-end"><Check size={14} /> END OF FLOW</div>
           <div className="canvasfoot"><ShieldCheck size={15} /> F7 stops input instantly · target focus is checked continuously</div></div>
-        <div className="inspector"><small>BLOCK SETTINGS</small><h3>{focused ? labels[focused.type] : "Select a block"}</h3>
+        <div className="inspector"><div className="inspector-eyebrow"><small>STEP INSPECTOR</small><span>{focused ? "EDIT ACTION" : "READY"}</span></div>
+          <h3>{focused ? labels[focused.type] : "Configure a step"}</h3>
+          <p className="inspector-intro">{focused ? "Adjust the selected action. Changes appear on the canvas immediately." : "Select any step on the canvas to see its settings here, or search the library to add one."}</p>
           {focused ? <><div className="inspector-fields">{Object.entries(focused).filter(([key, value]) => key !== "type" && key !== "template" && !Array.isArray(value)).map(([key, value]) =>
             <label key={key}>{key.replace(/([A-Z])/g, " $1")}{typeof value === "boolean" ? <input type="checkbox" disabled={locked || running} checked={value}
               onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.checked; })} /> : key === "name" ?
@@ -550,6 +584,9 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
               <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}>{(focused.type === "math" ? ["+", "-", "*", "/"] : ["==", "!=", "<", "<=", ">", ">="]).map((op) => <option key={op} value={op}>{op}</option>)}</select> : key === "mode" ?
               <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}><option value="while">While true</option><option value="until">Until true</option></select> : key === "button" ?
               <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}><option value="left">Left</option><option value="right">Right</option></select> :
+              (["goal", "prompt"].includes(key) || (focused.type === "text" && key === "value")) ?
+              <textarea disabled={locked || running} rows={4} value={value}
+                onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })} /> :
               <input disabled={locked || running} type={typeof value === "number" ? "number" : key === "color" ? "color" : "text"} value={value}
                 onChange={(event) => mutate((copy) => { get(copy, path)[key] = typeof value === "number" ? Number(event.target.value) : event.target.value; })} />}</label>)}</div>
             {focused.type === "findImage" && <div className="template-field"><label className="secondary" htmlFor="template-upload"><ImageIcon size={15} /> {focused.template ? "Replace image" : "Upload image template"}</label>
