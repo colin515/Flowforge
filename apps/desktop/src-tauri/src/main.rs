@@ -19,7 +19,7 @@ impl RunState {
   self.heartbeat=Instant::now();
   if let Some((hwnd,pid))=self.target {
    if !windows::valid(hwnd,pid){self.release();return Err("Target window closed or minimized".into())}
-   if input||Instant::now()>=self.armed {if windows::foreground()!=hwnd {self.release();return Err("Target lost focus. Re-focus it and start again.".into())}}
+   if input||Instant::now()>=self.armed {if !windows::target_foreground(hwnd) {self.release();return Err("Selected application is not foreground. Click its window and start the flow again.".into())}}
    return windows::client_rect(hwnd).map(Some)
   }Ok(None)
  }
@@ -40,7 +40,11 @@ fn button(name:&str)->Result<Button,String>{match name{"left"=>Ok(Button::Left),
 fn direction(action:&str)->Result<Direction,String>{match action{"down"=>Ok(Direction::Press),"up"=>Ok(Direction::Release),_=>Err("Unsupported input direction".into())}}
 fn lock(n:&Native)->Result<std::sync::MutexGuard<'_,RunState>,String>{n.0.lock().map_err(|_|"Input state unavailable".into())}
 #[tauri::command]fn list_windows()->Vec<WindowInfo>{windows::enumerate()}
-#[tauri::command]fn begin(state:tauri::State<Native>,target:Option<String>)->Result<u64,String>{let mut s=lock(&state)?;if s.active{return Err("A flow is already running".into())}s.release();s.target=match target {Some(id)=>{let hwnd=id.parse::<isize>().map_err(|_|"Invalid target")?;let item=windows::enumerate().into_iter().find(|w|w.id==id).ok_or("Window unavailable")?;Some((hwnd,item.pid))},None=>None};s.session=s.session.wrapping_add(1);s.active=true;s.armed=Instant::now()+Duration::from_secs(3);s.heartbeat=Instant::now();Ok(s.session)}
+#[tauri::command]fn begin(state:tauri::State<Native>,target:Option<String>)->Result<u64,String>{let mut s=lock(&state)?;if s.active{return Err("A flow is already running".into())}s.release();s.target=match target {Some(id)=>{let hwnd=id.parse::<isize>().map_err(|_|"Invalid target")?;let item=windows::enumerate().into_iter().find(|w|w.id==id).ok_or("Window unavailable")?;Some((hwnd,item.pid))},None=>None};s.session=s.session.wrapping_add(1);s.active=true;
+ // Flowforge owns foreground focus when Start is clicked. Ask Windows to
+ // switch to the selected app, with the existing 3-second handoff fallback.
+ if let Some((hwnd,_))=s.target {windows::activate(hwnd);}
+ s.armed=Instant::now()+Duration::from_secs(3);s.heartbeat=Instant::now();Ok(s.session)}
 #[tauri::command]fn check(state:tauri::State<Native>,session:u64)->Result<(),String>{lock(&state)?.guard(session,false).map(|_|())}
 #[tauri::command]fn stop(state:tauri::State<Native>)->Result<(),String>{lock(&state)?.release();Ok(())}
 #[tauri::command]fn input(state:tauri::State<Native>,session:u64,event:InputEvent)->Result<(),String>{
@@ -81,6 +85,6 @@ fn main(){
   let enigo=Enigo::new(&Settings::default()).map_err(|e|std::io::Error::other(e.to_string()))?;
   let native=Native(Arc::new(Mutex::new(RunState{active:false,session:0,target:None,armed:Instant::now(),heartbeat:Instant::now(),enigo,keys:vec![],buttons:vec![]})));
   app.manage(native.clone());
-  std::thread::spawn(move||loop{std::thread::sleep(Duration::from_millis(20));if let Ok(mut s)=native.0.lock(){if s.active&&(windows::emergency_down()||s.heartbeat.elapsed()>Duration::from_secs(2)||s.target.map(|(h,p)|!windows::valid(h,p)||(Instant::now()>=s.armed&&windows::foreground()!=h)).unwrap_or(false)){s.release()}}});Ok(())
+  std::thread::spawn(move||loop{std::thread::sleep(Duration::from_millis(20));if let Ok(mut s)=native.0.lock(){if s.active&&(windows::emergency_down()||s.heartbeat.elapsed()>Duration::from_secs(2)||s.target.map(|(h,p)|!windows::valid(h,p)||(Instant::now()>=s.armed&&!windows::target_foreground(h))).unwrap_or(false)){s.release()}}});Ok(())
  }).invoke_handler(tauri::generate_handler![list_windows,begin,check,stop,input,capture,position,ai::ai_status,ai::ai_prepare,ai::ai_generate,ai::ai_unload]).on_window_event(|w,event|{if matches!(event,tauri::WindowEvent::CloseRequested{..}){if let Some(n)=w.try_state::<Native>(){if let Ok(mut s)=n.0.lock(){s.release()};}}}).run(tauri::generate_context!()).expect("Flowforge failed to start");
 }

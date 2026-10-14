@@ -64,3 +64,14 @@ processes. A very small focus-change race remains between checking foreground
 state and delivering a Windows input event; this is standard foreground input,
 not exclusive window delivery. F7 is polled through GetAsyncKeyState; no installed
 keyboard hook or kernel driver is used.
+
+
+## Selected-window AI handoff regression
+
+1. Open Notepad, place it beside Flowforge, create a macro with an AI Navigate block and a goal such as "Click into Notepad and type Hello". Select **Notepad** in the builder's Control target picker. Click Run, and verify that Flowforge attempts to activate Notepad before executing. If Windows refuses focus switching, click Notepad during the 3-second countdown.
+2. Verify the AI step log shows each click, keypress, typing action or scroll command, not a silent "success" when it did nothing. The agent must stop if it explicitly fails or cannot verify completion within maxSteps.
+3. Test a window wider than 1024 pixels, with an identifiable button near its lower-right side. Verify that the AI's resized screenshot coordinates are scaled back before mouse movement; the cursor must reach the intended real button, not the compressed coordinate.
+4. Select **Entire desktop (advanced)** deliberately and verify that no input starts when no target is selected. In global mode, switch to the desired application during the countdown; global screenshots can include other desktop content.
+5. Move focus to an unrelated application mid-run. Verify no further input is delivered, all held keys/buttons release, and an actionable focus error is logged. Test an owned dialog in the selected app separately.
+6. Test at 100% display scaling, and verify the existing explicit error at other scalings (DPI handling is not yet fully supported). Test elevated/secure windows separately; Windows may block input at higher integrity levels.
+7. In the builder, search for "AI", append to a nested branch, insert immediately after a step, duplicate a step, edit a long AI goal, undo/redo and save. Reopen the flow and verify the edits persist. Confirm that a locked starter cannot be edited.

@@ -7,7 +7,7 @@ landing page. Tauri 2 + Rust + React power the desktop; React/Vite and CSS power
 the GitHub Pages site. Tesseract.js supplies open-source OCR. Plain CSS keeps the
 styling dependency footprint small; Lucide provides consistent SVG icons.
 
-**Status:** v0.4.1 opens to an empty local library. Users create, import or install
+**Status:** v0.4.2 opens to an empty local library. Users create, import or install
 macros from the catalog. Builder, Marketplace, and Run & Logs remain isolated
 views. The Windows installer is built by GitHub Actions. Marketplace
 engagement remains local to each device; shared accounts, counts, and moderation
@@ -37,9 +37,9 @@ require a service beyond static GitHub Pages.
   pixels. OCR worker
   and WASM load on demand. English traineddata downloads on first use.
 - Exact-pixel RGB checks with per-channel tolerance and conditional found state.
-- Local AI Agent Suite can be installed from the Marketplace. It adds two
-  draggable blocks: bounded screenshot-based navigation and a strict boolean
-  If/Else. A prompt-to-flow generator creates validated JSON blocks for review.
+- Local AI agent actions are available directly in the macro builder; the Marketplace
+  also includes an example Local AI Agent Suite. The two agent blocks provide
+  bounded screenshot-based navigation and a strict boolean If/Else. A prompt-to-flow generator creates validated JSON blocks for review.
   Ollama's local `qwen2.5vl:3b` model is pulled only when AI is invoked and
   explicitly unloaded after the run; a one-minute keep-alive also limits memory
   residency if the app exits unexpectedly. It is not downloaded on launch.
@@ -112,7 +112,7 @@ use `npm run dev -w @flowforge/web -- --host 127.0.0.1`.
 The Pages workflow builds the two web entries and commits the output to the
 `split-websites` branch. GitHub Pages serves the branch root, with the marketplace
 under `/marketplace/`, including its catalog and JSON macros. The Windows workflow
-validates Rust and publishes the NSIS installer as release `v0.4.1`.
+validates Rust and publishes the NSIS installer as release `v0.4.2`.
 
 ## Source layout
 

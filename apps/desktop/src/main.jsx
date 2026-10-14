@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
-  Activity, ArrowDown, ArrowUp, Check, ChevronRight, Copy,
+  Activity, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Check, ChevronRight, Copy,
   Download, ExternalLink, Flag, GripVertical, Layers, Lock, Moon,
   MousePointer2, Play, Plus, RefreshCw, Save, ScanLine, Search,
   ShieldCheck, Square, Star, Store, Sun, ThumbsDown, ThumbsUp, Image as ImageIcon,
@@ -63,7 +63,7 @@ function App() {
   const [builderPane, setBuilderPane] = useState("blocks");
   const [theme, setTheme] = useState(() => readLocal("ff-theme", preferredTheme()));
   const [windows, setWindows] = useState([]);
-  const [target, setTarget] = useState("global");
+  const [target, setTarget] = useState("");
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("Ready when you are");
   const [step, setStep] = useState("");
@@ -80,6 +80,9 @@ function App() {
   const [scanStep, setScanStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const past = useRef([]);
+  const future = useRef([]);
+  const [historyTick, setHistoryTick] = useState(0);
   const runner = useRef(null);
   const session = useRef(null);
   const runBusy = useRef(false);
@@ -90,13 +93,17 @@ function App() {
   const locked = Boolean(selected?.locked);
   const focused = path && macro ? get(macro, path) : null;
   const installed = (item) => custom.some((entry) => entry.sourceId === item.id);
-  const aiInstalled = custom.some((entry) => entry.sourceId === "local-ai-suite");
+  // AI is an optional built-in action for every macro. Ollama loads only on use.
+  const aiAvailable = true;
   const record = (kind, message) => {
     setStatus(message);
     setLogs((current) => [...current.slice(-199), { time: formatTime(), kind, message }]);
   };
 
-  useEffect(() => { setMacro(selected ? clone(selected.macro) : null); setPath(null); setBuilderPane("blocks"); }, [id]);
+  useEffect(() => {
+    setMacro(selected ? clone(selected.macro) : null); setPath(null); setBuilderPane("blocks");
+    past.current = []; future.current = []; setHistoryTick((tick) => tick + 1);
+  }, [id]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
@@ -130,13 +137,30 @@ function App() {
     try {
       const found = await invoke("list_windows");
       setWindows(found);
-      setTarget((current) => current === "global" || found.some((w) => w.id === current) ? current : "global");
+      setTarget((current) => !current || current === "global" || found.some((w) => w.id === current) ? current : "");
     } catch (error) { record("error", String(error)); }
   }
   function mutate(fn) {
     if (!macro || locked || running) return;
-    const copy = clone(macro); fn(copy); setMacro(copy);
+    const copy = clone(macro); fn(copy);
+    if (JSON.stringify(copy) === JSON.stringify(macro)) return;
+    past.current.push(clone(macro));
+    if (past.current.length > 40) past.current.shift();
+    future.current = [];
+    setHistoryTick((tick) => tick + 1);
+    setMacro(copy);
   }
+  function undo() {
+    if (locked || running || !past.current.length) return;
+    future.current.push(clone(macro));
+    setMacro(past.current.pop()); setPath(null); setHistoryTick((tick) => tick + 1);
+  }
+  function redo() {
+    if (locked || running || !future.current.length) return;
+    past.current.push(clone(macro));
+    setMacro(future.current.pop()); setPath(null); setHistoryTick((tick) => tick + 1);
+  }
+  const unsaved = Boolean(macro && selected && JSON.stringify(macro) !== JSON.stringify(selected.macro));
   function save() {
     try {
       if (!macro) throw new Error("Create or install a macro first");
@@ -184,7 +208,23 @@ function App() {
     }
     return block;
   }
-  function add(listPath, type) { mutate((copy) => get(copy, listPath).push(makeBlock(copy, type))); }
+  function add(listPath, type) {
+    const position = get(macro, listPath)?.length ?? 0;
+    mutate((copy) => get(copy, listPath).push(makeBlock(copy, type)));
+    setPath([...listPath, position]);
+  }
+  function insertAfter(blockPath, type) {
+    if (!blockPath || !Object.hasOwn(defaults, type)) return;
+    mutate((copy) => get(copy, blockPath.slice(0, -1)).splice(blockPath.at(-1) + 1, 0, makeBlock(copy, type)));
+    setPath([...blockPath.slice(0, -1), blockPath.at(-1) + 1]);
+  }
+  function duplicateBlock(blockPath) {
+    mutate((copy) => {
+      const list = get(copy, blockPath.slice(0, -1));
+      list.splice(blockPath.at(-1) + 1, 0, clone(list[blockPath.at(-1)]));
+    });
+    setPath([...blockPath.slice(0, -1), blockPath.at(-1) + 1]);
+  }
   function remove(blockPath) {
     mutate((copy) => get(copy, blockPath.slice(0, -1)).splice(blockPath.at(-1), 1)); setPath(null);
   }
@@ -276,7 +316,7 @@ function App() {
     unload: () => invoke("ai_unload"),
   }, (message) => record("info", message));
   async function generateFlow(goal) {
-    if (!native || !aiInstalled || running || aiBusy) return;
+    if (!native || !aiAvailable || running || aiBusy) return;
     setAiBusy(true);
     const ai = localAI();
     try {
@@ -290,6 +330,11 @@ function App() {
   }
   async function run() {
     if (runBusy.current || aiBusy) return;
+    if (!target) {
+      setView("run");
+      record("warning", "Choose a target app or explicitly select Entire desktop before starting. Nothing was sent.");
+      return;
+    }
     audio.current.activate();
     runBusy.current = true; setView("run");
     try {
@@ -297,6 +342,7 @@ function App() {
       if (!native) throw new Error("Input is available in the Windows desktop app.");
       setRunning(true);
       session.current = await invoke("begin", { target: target === "global" ? null : target });
+      record("info", `Target selected: ${target === "global" ? "Entire desktop" : windows.find((w) => w.id === target)?.title ?? "Application"} · focus handoff started`);
       const bridge = {
         position: (screen) => invoke("position", { session: session.current, screen }),
         check: () => invoke("check", { session: session.current }),
@@ -331,8 +377,9 @@ function App() {
     try { await getCurrentWindow()[action](); }
     catch (error) { record("error", `Window control failed: ${error}`); }
   }
-  const actions = { macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, deleteSelected, record,
-    builderPane, setBuilderPane, run, create, fileRef, imported, id, selected, aiInstalled, aiBusy, generateFlow, native };
+  const actions = { macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, insertAfter, duplicateBlock,
+    dropBlock, deleteSelected, record, undo, redo, canUndo: historyTick >= 0 && past.current.length > 0, canRedo: future.current.length > 0, unsaved,
+    builderPane, setBuilderPane, run, create, fileRef, imported, id, selected, aiAvailable, aiBusy, generateFlow, native, windows, target, setTarget, refreshWindows };
   return (
     <div className="studio">
       <div className="windowbar"><div className="window-drag" data-tauri-drag-region onDoubleClick={() => windowControl("toggleMaximize")}
@@ -404,12 +451,25 @@ function EmptyBuilder({ create, openMarket, importFile }) {
       <button className="secondary" onClick={openMarket}><Store size={16} /> Browse marketplace</button>
       <button className="ghost" onClick={importFile}><Upload size={16} /> Import JSON</button></div></section>;
 }
-function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, deleteSelected, record, builderPane, setBuilderPane, run, id, selected, aiInstalled, aiBusy, generateFlow, native }) {
+function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, insertAfter, duplicateBlock, dropBlock, deleteSelected, record, undo, redo, canUndo, canRedo, unsaved, builderPane, setBuilderPane, run, id, selected, aiAvailable, aiBusy, generateFlow, native, windows, target, setTarget, refreshWindows }) {
   const clicker = id === "auto-clicker" || selected.sourceId === "auto-clicker";
   const [variableName, setVariableName] = useState("");
   const [variableInitial, setVariableInitial] = useState("0");
   const [aiGoal, setAiGoal] = useState("");
   const [aiStatus, setAiStatus] = useState("");
+  const [paletteSearch, setPaletteSearch] = useState("");
+  const groups = [
+    ["AI AGENT", ["aiNavigate", "aiIf"]],
+    ["MOUSE & KEYBOARD", ["move", "click", "key", "keyChord", "text", "drag"]],
+    ["SCREEN RECOGNITION", ["findText", "findColor", "findImage", "checkPixel"]],
+    ["LOOPS & CONDITIONS", ["loop", "while", "ifFound", "ifCompare", "break", "continue", "wait"]],
+    ["VARIABLES & MATH", ["setVar", "math"]],
+  ].filter(([name]) => name !== "AI AGENT" || aiAvailable);
+  const query = paletteSearch.trim().toLowerCase();
+  const countSteps = (blocks) => blocks.reduce((count, block) => count + 1 +
+    ["body", "then", "else"].reduce((sum, branch) => sum +
+      (Array.isArray(block[branch]) ? countSteps(block[branch]) : 0), 0), 0);
+  const steps = countSteps(macro.blocks);
   useEffect(() => {
     if (builderPane !== "ai" || !native) return;
     let mounted = true;
@@ -455,15 +515,27 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
   }
   return <section className="builder-view" aria-label="Visual macro builder">
     <div className="view-heading"><div><small>VISUAL AUTOMATION</small><input className="flowname" aria-label="Macro name" disabled={locked || running} value={macro.name}
-      onChange={(event) => mutate((copy) => { copy.name = event.target.value; })} /><p>{locked ? "Locked starter · duplicate to make changes" : "Create your workflow, block by block."}</p></div>
-      <div className="heading-actions"><button className="ghost" title="Duplicate macro" disabled={running} onClick={() => duplicate()}><Copy size={16} /> Duplicate</button>
+      onChange={(event) => mutate((copy) => { copy.name = event.target.value; })} /><p>{locked ? "Locked starter · duplicate to make changes" : `${steps} action${steps === 1 ? "" : "s"} · ${unsaved ? "Unsaved changes" : "All changes saved"}`}</p></div>
+      <div className="heading-actions">
+        <button className="ghost compact" title="Undo" aria-label="Undo last change" disabled={!canUndo || running} onClick={undo}><ArrowLeft size={16} /> Undo</button>
+        <button className="ghost compact" title="Redo" aria-label="Redo last change" disabled={!canRedo || running} onClick={redo}><ArrowRight size={16} /> Redo</button>
+        <button className="ghost" title="Duplicate macro" disabled={running} onClick={() => duplicate()}><Copy size={16} /> Duplicate</button>
         <button className="ghost" title="Export JSON" onClick={() => downloadJSON(macro)}><Download size={16} /> Export</button>
         <button className="ghost" title="Save macro" disabled={locked || running} onClick={save}><Save size={16} /> Save</button>
         {!locked && <button className="ghost danger" title="Delete macro" disabled={running} onClick={deleteSelected}><Trash2 size={16} /> Delete</button>}
-        <button className="primary" onClick={run} disabled={running || aiBusy}><Play size={15} fill="currentColor" /> Run flow</button></div></div>
+        <button className="primary" onClick={run} disabled={!native || running || aiBusy || !macro.blocks.length}><Play size={15} fill="currentColor" /> Run flow</button></div></div>
+    <div className="builder-target surface">
+      <div className="target-label"><MousePointer2 size={18} /><div><strong>Control target</strong><span>Select the app FlowForge should operate. It will attempt to focus that window before the 3-second countdown.</span></div></div>
+      <div className="target-picker"><select aria-label="Choose an application to automate" value={target} disabled={!native || running}
+        onChange={(event) => setTarget(event.target.value)}>
+        <option value="">Choose an application…</option>
+        {windows.map((win) => <option key={win.id} value={win.id}>{win.title}</option>)}
+        <option value="global">Entire desktop (advanced)</option>
+      </select><button className="ghost" type="button" disabled={!native || running} title="Refresh application list" aria-label="Refresh application list" onClick={refreshWindows}><RefreshCw size={16} /></button></div>
+    </div>
     <div className="builder-tabs"><button className={builderPane === "blocks" ? "selected" : ""} onClick={() => setBuilderPane("blocks")}>Block builder</button>
       <button className={builderPane === "variables" ? "selected" : ""} onClick={() => setBuilderPane("variables")}>Variables <span>{Object.keys(variables).length}</span></button>
-      {aiInstalled && <button className={builderPane === "ai" ? "selected" : ""} onClick={() => setBuilderPane("ai")}>AI Generator</button>}
+      {aiAvailable && <button className={builderPane === "ai" ? "selected" : ""} onClick={() => setBuilderPane("ai")}>AI Generator</button>}
       {clicker && <button className={builderPane === "clicker" ? "selected" : ""} onClick={() => setBuilderPane("clicker")}>Clicker settings</button>}</div>
     {builderPane === "variables" ? <div className="variable-panel surface"><small>INITIAL VALUES</small><h2>Variables & counters</h2><p>Set starting values here. Set and Math blocks update them as a flow runs.</p>
       <div className="variable-list">{Object.entries(variables).map(([name, value]) => <label key={name}><code>{name}</code><input type="number" aria-label={`Initial value for ${name}`} disabled={locked || running}
@@ -472,7 +544,7 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
       <form onSubmit={addVariable}><input aria-label="Variable name" placeholder="Variable name" value={variableName} disabled={locked || running} onChange={(event) => setVariableName(event.target.value)} />
         <input aria-label="Initial value" type="number" value={variableInitial} disabled={locked || running} onChange={(event) => setVariableInitial(event.target.value)} />
         <button className="secondary" disabled={locked || running}><Plus size={15} /> Add variable</button></form></div> :
-    builderPane === "ai" && aiInstalled ? <div className="ai-panel surface"><span className="featureicon blue"><ScanLine size={24} /></span>
+    builderPane === "ai" && aiAvailable ? <div className="ai-panel surface"><span className="featureicon blue"><ScanLine size={24} /></span>
       <small>LOCAL AI · QWEN2.5-VL 3B</small><h2>Describe a flow.</h2><p>Turn a plain-language goal into a validated block tree. The model loads only when you generate or run an AI block, then unloads. Ollama must be installed and running; the model downloads on first use.</p>
       <p className="ai-service" role="status">{aiStatus}</p>
       <form onSubmit={(event) => { event.preventDefault(); generateFlow(aiGoal); }}><label htmlFor="ai-goal">WHAT SHOULD THIS FLOW DO?</label>
@@ -486,17 +558,26 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
       <label>Mouse button<select disabled={running || locked} value={macro.blocks[0]?.body?.[0]?.button ?? "left"}
         onChange={(event) => mutate((copy) => { copy.blocks[0].body[0].button = event.target.value; })}><option value="left">Left button</option><option value="right">Right button</option></select></label>
       <button className="secondary" onClick={save}>{id === "auto-clicker" ? "Save configured copy" : "Save changes"}</button></div> :
-      <div className="builder-grid surface"><div className="palette"><small>BLOCK LIBRARY</small>
-        <div className="palette-group"><strong>CONTROL</strong>{["loop", "while", "ifFound", "ifCompare", "break", "continue", "wait"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        <div className="palette-group"><strong>VARIABLES</strong>{["setVar", "math"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        <div className="palette-group"><strong>INPUT & ACTIONS</strong>{["move", "click", "key", "keyChord", "text", "drag"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        <div className="palette-group"><strong>VISION</strong>{["findText", "findColor", "findImage", "checkPixel"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>
-        {aiInstalled && <div className="palette-group"><strong>LOCAL AI</strong>{["aiNavigate", "aiIf"].map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}</div>}
-        <p>Drag into any list to nest blocks, or click to append.</p></div>
+      <div className="builder-grid surface"><div className="palette"><div className="palette-top"><small>ACTION LIBRARY</small><span>{Object.keys(defaults).length} BLOCKS</span></div>
+        <div className="palette-search"><Search size={15} /><input aria-label="Find an action" placeholder="Find an action…" value={paletteSearch}
+          onChange={(event) => setPaletteSearch(event.target.value)} /></div>
+        {groups.map(([name, types]) => {
+          const matching = types.filter((type) => !query || labels[type].toLowerCase().includes(query) || name.toLowerCase().includes(query));
+          return matching.length ? <div key={name} className="palette-group"><strong>{name}</strong>
+            {matching.map((type) => <PaletteBlock key={type} type={type} disabled={locked || running} add={add} />)}
+          </div> : null;
+        })}
+        {query && !groups.some(([name, types]) => types.some((type) => labels[type].toLowerCase().includes(query) || name.toLowerCase().includes(query))) &&
+          <p className="palette-empty">No actions found. Try another search.</p>}
+        <p className="palette-help">Click to add a step, or drag it to a specific position or branch.</p></div>
         <div className="canvas"><div className="canvaslabel"><i className="status-dot live" /> WHEN FLOW STARTS <span>{locked ? <><Lock size={12} /> LOCKED</> : "EDITABLE FLOW"}</span></div>
-          <BlockList list={macro.blocks} listPath={["blocks"]} chosen={path} select={setPath} add={add} remove={remove} reorder={reorder} dropBlock={dropBlock} disabled={locked || running} />
+          <div className="flow-progress"><span>START</span><div className="flow-progress-line" /><span>{steps} STEPS</span></div>
+          <BlockList list={macro.blocks} listPath={["blocks"]} chosen={path} select={setPath} add={add} insertAfter={insertAfter} duplicateBlock={duplicateBlock} remove={remove} reorder={reorder} dropBlock={dropBlock} disabled={locked || running} />
+          <div className="flow-end"><Check size={14} /> END OF FLOW</div>
           <div className="canvasfoot"><ShieldCheck size={15} /> F7 stops input instantly · target focus is checked continuously</div></div>
-        <div className="inspector"><small>BLOCK SETTINGS</small><h3>{focused ? labels[focused.type] : "Select a block"}</h3>
+        <div className="inspector"><div className="inspector-eyebrow"><small>STEP INSPECTOR</small><span>{focused ? "EDIT ACTION" : "READY"}</span></div>
+          <h3>{focused ? labels[focused.type] : "Configure a step"}</h3>
+          <p className="inspector-intro">{focused ? "Adjust the selected action. Changes appear on the canvas immediately." : "Select any step on the canvas to see its settings here, or search the library to add one."}</p>
           {focused ? <><div className="inspector-fields">{Object.entries(focused).filter(([key, value]) => key !== "type" && key !== "template" && !Array.isArray(value)).map(([key, value]) =>
             <label key={key}>{key.replace(/([A-Z])/g, " $1")}{typeof value === "boolean" ? <input type="checkbox" disabled={locked || running} checked={value}
               onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.checked; })} /> : key === "name" ?
@@ -504,6 +585,9 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
               <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}>{(focused.type === "math" ? ["+", "-", "*", "/"] : ["==", "!=", "<", "<=", ">", ">="]).map((op) => <option key={op} value={op}>{op}</option>)}</select> : key === "mode" ?
               <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}><option value="while">While true</option><option value="until">Until true</option></select> : key === "button" ?
               <select disabled={locked || running} value={value} onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })}><option value="left">Left</option><option value="right">Right</option></select> :
+              (["goal", "prompt"].includes(key) || (focused.type === "text" && key === "value")) ?
+              <textarea disabled={locked || running} rows={4} value={value}
+                onChange={(event) => mutate((copy) => { get(copy, path)[key] = event.target.value; })} /> :
               <input disabled={locked || running} type={typeof value === "number" ? "number" : key === "color" ? "color" : "text"} value={value}
                 onChange={(event) => mutate((copy) => { get(copy, path)[key] = typeof value === "number" ? Number(event.target.value) : event.target.value; })} />}</label>)}</div>
             {focused.type === "findImage" && <div className="template-field"><label className="secondary" htmlFor="template-upload"><ImageIcon size={15} /> {focused.template ? "Replace image" : "Upload image template"}</label>
@@ -551,12 +635,13 @@ function RunView({ macro, windows, target, setTarget, refreshWindows, humanize, 
     <span className={`run-badge ${running ? "running" : ""}`}><i className={`status-dot ${running ? "live" : ""}`} /> {running ? "Running" : "Idle"}</span></div>
     <div className="run-grid"><div className="run-controls surface"><h2>Execution settings</h2><p>Selected flow: <strong>{macro?.name ?? "No macro selected"}</strong></p>
       <label htmlFor="target-window">TARGET WINDOW</label><div className="target-select"><select id="target-window" disabled={running} value={target} onChange={(event) => setTarget(event.target.value)}>
-        <option value="global">Global Desktop Input</option>{windows.map((window) => <option key={window.id} value={window.id}>{window.title} · PID {window.pid}</option>)}</select>
+        <option value="" disabled>Choose an application…</option><option value="global">Entire desktop (advanced)</option>{windows.map((window) => <option key={window.id} value={window.id}>{window.title} · PID {window.pid}</option>)}</select>
         <button aria-label="Refresh windows" title="Refresh windows" disabled={running} onClick={refreshWindows}><RefreshCw size={16} /></button></div>
-      <div className="safety-note"><ShieldCheck size={19} /><div><strong>{target === "global" ? "Global mode" : "Focus protection active"}</strong><p>{target === "global" ? "Input can reach your entire desktop. Choose a window for focus protection." : "Input stops as soon as this window loses focus."}</p></div></div>
+      <div className="safety-note"><ShieldCheck size={19} /><div><strong>{!target ? "No target selected" : target === "global" ? "Entire desktop" : "Selected app only"}</strong>
+        <p>{!target ? "Choose an app to send its mouse and keyboard actions there." : target === "global" ? "Actions and AI screenshots may affect your entire primary screen. Use deliberately." : "FlowForge attempts to focus this window when starting. Focus loss stops all input. If Windows prevents switching, focus the app during the countdown."}</p></div></div>
       <label className="toggle-row"><input type="checkbox" disabled={running} checked={humanize} onChange={(event) => setHumanize(event.target.checked)} /><span>Vary timing and mouse path slightly</span></label>
       <label className="toggle-row"><Volume2 size={17} /><input type="checkbox" checked={sounds} onChange={(event) => { if (event.target.checked) activateSound(); setSounds(event.target.checked); }} /><span>Subtle action and event sounds</span></label>
-      <div className="run-buttons">{running ? <button className="stop" onClick={stop}><Square size={16} fill="currentColor" /> Stop · F7</button> : <button className="primary" onClick={run} disabled={!native || !macro}><Play size={16} fill="currentColor" /> Start flow</button>}</div>
+      <div className="run-buttons">{running ? <button className="stop" onClick={stop}><Square size={16} fill="currentColor" /> Stop · F7</button> : <button className="primary" onClick={run} disabled={!native || !macro || !macro.blocks.length || !target}><Play size={16} fill="currentColor" /> Start flow</button>}</div>
       <p className="shortcut">F7 · Emergency stop from anywhere</p></div>
       <div className="run-monitor surface"><div className="monitor-header"><div><small>LIVE ACTIVITY</small><h2>Execution log</h2></div><span>{step || status}</span></div>
         <div className="terminal" role="log" aria-live="polite">{logs.map((entry, index) => <div className={`log-line ${entry.kind}`} key={`${entry.time}-${index}`}><time>{entry.time}</time><span>{entry.kind.toUpperCase()}</span><p>{entry.message}</p></div>)}<div ref={logEnd} /></div></div></div></section>;
@@ -569,10 +654,12 @@ function BlockList({
   add,
   remove,
   reorder,
+  insertAfter,
+  duplicateBlock,
   dropBlock,
   disabled,
 }) {
-  const props = { chosen, select, add, remove, reorder, dropBlock, disabled };
+  const props = { chosen, select, add, insertAfter, duplicateBlock, remove, reorder, dropBlock, disabled };
   const [over, setOver] = useState(false);
   return (
     <div
@@ -615,7 +702,7 @@ function BlockList({
               <button className="blockselect" onClick={() => select(path)}>
                 <span className="draghandle" draggable={!disabled} aria-label="Drag block"
                   onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.setData("application/x-flowforge", JSON.stringify({ type: "existing", path })); }}><GripVertical size={13} /></span>
-                <b>{labels[b.type]}</b>
+                <span className="step-order">{i + 1}</span><b>{labels[b.type]}</b>
                 <span>
                   {b.type === "wait"
                     ? `${b.ms} ms ± ${b.jitter}`
@@ -657,6 +744,12 @@ function BlockList({
                 </span>
               </button>
               <div className="blocktools">
+                <select className="quick-insert" aria-label={`Add action after ${labels[b.type]}`} title="Insert a step directly after this one"
+                  disabled={disabled} value="" onChange={(event) => insertAfter(path, event.target.value)}>
+                  <option value="" disabled>+ Add</option>
+                  {Object.keys(defaults).map((type) => <option key={type} value={type}>{labels[type]}</option>)}
+                </select>
+                <button aria-label="Duplicate block" title="Duplicate step" disabled={disabled} onClick={() => duplicateBlock(path)}><Copy size={13} /></button>
                 <button
                   aria-label="Move block up"
                   disabled={disabled || i === 0}
@@ -708,9 +801,8 @@ function BlockList({
         );
       })}
       <div className="dropzone">
-        {list.length === 0
-          ? "Drop your first block here"
-          : "Drop to append a block"}
+        <div><strong>{list.length === 0 ? "Add your first action" : "Add another action"}</strong>
+          <small>{list.length === 0 ? "Choose from the menu or drag one here" : "Add to this sequence or drop anywhere above"}</small></div>
         {!disabled && (
           <select
             aria-label="Add a block to this list"
@@ -718,7 +810,7 @@ function BlockList({
             onChange={(e) => add(listPath, e.target.value)}
           >
             <option value="" disabled>
-              + Add block
+              + Choose step
             </option>
             {Object.keys(defaults).map((t) => (
               <option key={t} value={t}>

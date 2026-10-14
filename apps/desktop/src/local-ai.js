@@ -3,7 +3,10 @@ import { parseMacro } from "../../../packages/shared/macros.js";
 const ACTIONS = new Set(["click", "type", "key", "scroll", "done", "fail"]);
 const KEY = /^(Space|Enter|Tab|Escape|Shift|Control|Alt|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/;
 function decoded(text) {
-  const result = JSON.parse(text);
+  // Small local models occasionally wrap strict JSON in Markdown or a thinking tag.
+  const trimmed = String(text).replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const fenced = trimmed.match(/^\x60\x60\x60(?:json)?\s*([\s\S]*?)\s*\x60\x60\x60$/i);
+  const result = JSON.parse(fenced ? fenced[1] : trimmed);
   if (!result || typeof result !== "object" || Array.isArray(result)) throw new Error("Local AI returned an invalid object");
   return result;
 }
@@ -51,8 +54,8 @@ export class LocalAI {
     source.src = image;
     await source.decode();
     const largest = Math.max(source.width, source.height);
-    if (largest <= 1280) return image;
-    const scale = 1280 / largest;
+    if (largest <= 1024) return image;
+    const scale = 1024 / largest;
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(source.width * scale));
     canvas.height = Math.max(1, Math.round(source.height * scale));
@@ -70,8 +73,22 @@ export class LocalAI {
     return parseDecision(await this.ask(prompt, frame.data, 64));
   }
   async next(goal, frame, history) {
-    const prompt = `You control only the visible application shown in this screenshot. Goal: ${goal}\nScreenshot dimensions: ${frame.width}x${frame.height}. History of your last actions: ${history.join("; ") || "none"}. Choose exactly ONE next action. Return ONLY JSON: {"action":"click","x":10,"y":20} with screenshot-relative coordinates; or {"action":"type","text":"..."}; or {"action":"key","key":"Enter"}; or {"action":"scroll","amount":1}; or {"action":"done"} only after visually verifying the goal; or {"action":"fail","reason":"..."} if impossible. Never request commands, scripts, files, web access, or clicks outside the screenshot. If uncertain, fail.`;
-    return parseAction(await this.ask(prompt, frame.data, 160), frame);
+    // Coordinates must match the image actually sent to the vision model,
+    // not the full-resolution native screenshot.
+    const image = await this.compactImage(frame.data);
+    const scale = Math.min(1, 1024 / Math.max(frame.width, frame.height));
+    const shown = {
+      width: Math.max(1, Math.round(frame.width * scale)),
+      height: Math.max(1, Math.round(frame.height * scale)),
+    };
+    const prompt = `You control only the selected application's visible window. Goal: ${goal}\nThe attached screenshot is ${shown.width} pixels wide and ${shown.height} pixels high. Coordinates start at the top-left (0,0). Previous actions: ${history.join("; ") || "none"}. Choose exactly ONE useful next action. Return ONLY JSON: {"action":"click","x":10,"y":20} with coordinates in THIS IMAGE; or {"action":"type","text":"..."}; or {"action":"key","key":"Enter"}; or {"action":"scroll","amount":1}; or {"action":"done"} ONLY when the screenshot proves the goal is complete; or {"action":"fail","reason":"..."} if impossible. Prefer actionable clicks over announcing intentions. Never request commands, scripts, files or clicks outside this image.`;
+    const action = parseAction(await this.ask(prompt, image, 200), shown);
+    if (action.action !== "click") return action;
+    return {
+      ...action,
+      x: Math.min(frame.width - 1, Math.max(0, Math.round(action.x * frame.width / shown.width))),
+      y: Math.min(frame.height - 1, Math.max(0, Math.round(action.y * frame.height / shown.height))),
+    };
   }
   async generateMacro(goal) {
     const prompt = `Generate one safe visual macro for this task: ${goal}\nReturn ONLY a JSON object with exactly {"version":1,"name":"...","blocks":[...]}. Allowed blocks: {"type":"wait","ms":500,"jitter":0}, {"type":"click","button":"left"}, {"type":"move","x":10,"y":10,"relative":false,"smooth":true,"durationMs":300}, {"type":"key","key":"Enter","holdMs":50}, {"type":"text","value":"example"}, {"type":"loop","count":2,"body":[...]}, {"type":"findText","text":"Skip","confidence":80,"interval":500,"timeout":5000,"click":false}, {"type":"ifFound","then":[],"else":[]}, {"type":"aiNavigate","goal":"...","maxSteps":8}, {"type":"aiIf","prompt":"...","then":[],"else":[]}. Use at most twelve blocks, loops finite unless the user expressly requests indefinite repetition. Do not include executable code or any other fields.`;
