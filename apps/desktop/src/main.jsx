@@ -63,7 +63,7 @@ function App() {
   const [builderPane, setBuilderPane] = useState("blocks");
   const [theme, setTheme] = useState(() => readLocal("ff-theme", preferredTheme()));
   const [windows, setWindows] = useState([]);
-  const [target, setTarget] = useState("global");
+  const [target, setTarget] = useState("");
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("Ready when you are");
   const [step, setStep] = useState("");
@@ -80,6 +80,9 @@ function App() {
   const [scanStep, setScanStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const past = useRef([]);
+  const future = useRef([]);
+  const [historyTick, setHistoryTick] = useState(0);
   const runner = useRef(null);
   const session = useRef(null);
   const runBusy = useRef(false);
@@ -96,7 +99,10 @@ function App() {
     setLogs((current) => [...current.slice(-199), { time: formatTime(), kind, message }]);
   };
 
-  useEffect(() => { setMacro(selected ? clone(selected.macro) : null); setPath(null); setBuilderPane("blocks"); }, [id]);
+  useEffect(() => {
+    setMacro(selected ? clone(selected.macro) : null); setPath(null); setBuilderPane("blocks");
+    past.current = []; future.current = []; setHistoryTick((tick) => tick + 1);
+  }, [id]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
@@ -130,13 +136,30 @@ function App() {
     try {
       const found = await invoke("list_windows");
       setWindows(found);
-      setTarget((current) => current === "global" || found.some((w) => w.id === current) ? current : "global");
+      setTarget((current) => !current || current === "global" || found.some((w) => w.id === current) ? current : "");
     } catch (error) { record("error", String(error)); }
   }
   function mutate(fn) {
     if (!macro || locked || running) return;
-    const copy = clone(macro); fn(copy); setMacro(copy);
+    const copy = clone(macro); fn(copy);
+    if (JSON.stringify(copy) === JSON.stringify(macro)) return;
+    past.current.push(clone(macro));
+    if (past.current.length > 40) past.current.shift();
+    future.current = [];
+    setHistoryTick((tick) => tick + 1);
+    setMacro(copy);
   }
+  function undo() {
+    if (locked || running || !past.current.length) return;
+    future.current.push(clone(macro));
+    setMacro(past.current.pop()); setPath(null); setHistoryTick((tick) => tick + 1);
+  }
+  function redo() {
+    if (locked || running || !future.current.length) return;
+    past.current.push(clone(macro));
+    setMacro(future.current.pop()); setPath(null); setHistoryTick((tick) => tick + 1);
+  }
+  const unsaved = Boolean(macro && selected && JSON.stringify(macro) !== JSON.stringify(selected.macro));
   function save() {
     try {
       if (!macro) throw new Error("Create or install a macro first");
@@ -184,7 +207,23 @@ function App() {
     }
     return block;
   }
-  function add(listPath, type) { mutate((copy) => get(copy, listPath).push(makeBlock(copy, type))); }
+  function add(listPath, type) {
+    const position = get(macro, listPath)?.length ?? 0;
+    mutate((copy) => get(copy, listPath).push(makeBlock(copy, type)));
+    setPath([...listPath, position]);
+  }
+  function insertAfter(blockPath, type) {
+    if (!blockPath || !Object.hasOwn(defaults, type)) return;
+    mutate((copy) => get(copy, blockPath.slice(0, -1)).splice(blockPath.at(-1) + 1, 0, makeBlock(copy, type)));
+    setPath([...blockPath.slice(0, -1), blockPath.at(-1) + 1]);
+  }
+  function duplicateBlock(blockPath) {
+    mutate((copy) => {
+      const list = get(copy, blockPath.slice(0, -1));
+      list.splice(blockPath.at(-1) + 1, 0, clone(list[blockPath.at(-1)]));
+    });
+    setPath([...blockPath.slice(0, -1), blockPath.at(-1) + 1]);
+  }
   function remove(blockPath) {
     mutate((copy) => get(copy, blockPath.slice(0, -1)).splice(blockPath.at(-1), 1)); setPath(null);
   }
@@ -290,6 +329,11 @@ function App() {
   }
   async function run() {
     if (runBusy.current || aiBusy) return;
+    if (!target) {
+      setView("run");
+      record("warning", "Choose a target app or explicitly select Entire desktop before starting. Nothing was sent.");
+      return;
+    }
     audio.current.activate();
     runBusy.current = true; setView("run");
     try {
@@ -297,6 +341,7 @@ function App() {
       if (!native) throw new Error("Input is available in the Windows desktop app.");
       setRunning(true);
       session.current = await invoke("begin", { target: target === "global" ? null : target });
+      record("info", `Target selected: ${target === "global" ? "Entire desktop" : windows.find((w) => w.id === target)?.title ?? "Application"} · focus handoff started`);
       const bridge = {
         position: (screen) => invoke("position", { session: session.current, screen }),
         check: () => invoke("check", { session: session.current }),
@@ -331,8 +376,9 @@ function App() {
     try { await getCurrentWindow()[action](); }
     catch (error) { record("error", `Window control failed: ${error}`); }
   }
-  const actions = { macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, dropBlock, deleteSelected, record,
-    builderPane, setBuilderPane, run, create, fileRef, imported, id, selected, aiInstalled, aiBusy, generateFlow, native };
+  const actions = { macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, insertAfter, duplicateBlock,
+    dropBlock, deleteSelected, record, undo, redo, canUndo: historyTick >= 0 && past.current.length > 0, canRedo: future.current.length > 0, unsaved,
+    builderPane, setBuilderPane, run, create, fileRef, imported, id, selected, aiInstalled, aiBusy, generateFlow, native, windows, target, setTarget, refreshWindows };
   return (
     <div className="studio">
       <div className="windowbar"><div className="window-drag" data-tauri-drag-region onDoubleClick={() => windowControl("toggleMaximize")}
