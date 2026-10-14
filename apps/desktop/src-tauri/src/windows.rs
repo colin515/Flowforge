@@ -11,6 +11,9 @@ extern "system"{
  fn GetWindowTextW(hwnd:isize,text:*mut u16,count:i32)->i32;
  fn GetWindowThreadProcessId(hwnd:isize,pid:*mut u32)->u32;
  fn GetForegroundWindow()->isize;fn GetAsyncKeyState(key:i32)->i16;
+ fn SetForegroundWindow(hwnd:isize)->i32;
+ fn IsChild(parent:isize,child:isize)->i32;
+ fn GetAncestor(hwnd:isize,flags:u32)->isize;
  fn GetClientRect(hwnd:isize,rect:*mut Rect)->i32;fn ClientToScreen(hwnd:isize,point:*mut Point)->i32;
 }
 #[derive(Serialize)]pub struct WindowInfo{pub id:String,pub title:String,pub pid:u32}
@@ -19,7 +22,16 @@ unsafe extern "system" fn visit(hwnd:isize,data:isize)->i32{
  if IsWindowVisible(hwnd)==0||IsIconic(hwnd)!=0{return 1}let mut text=[0u16;1024];let len=GetWindowTextW(hwnd,text.as_mut_ptr(),text.len() as i32);let mut pid=0;GetWindowThreadProcessId(hwnd,&mut pid);
  if len>0&&pid!=std::process::id(){let result=&mut *(data as *mut Vec<WindowInfo>);result.push(WindowInfo{id:hwnd.to_string(),title:String::from_utf16_lossy(&text[..len as usize]),pid})}1
 }
-pub fn foreground()->isize{unsafe{GetForegroundWindow()}}
-pub fn emergency_down()->bool{unsafe{GetAsyncKeyState(0x76)<0||GetAsyncKeyState(0x77)<0}}
+/// Try to focus only the explicitly selected window. Windows may deny this;
+/// execution still refuses to send input until it is truly foreground.
+pub fn activate(hwnd:isize)->bool{unsafe{SetForegroundWindow(hwnd)!=0}}
+pub fn target_foreground(hwnd:isize)->bool{
+ unsafe{
+  let active=GetForegroundWindow();
+  active==hwnd || (active!=0 && (IsChild(hwnd,active)!=0 ||
+    (GetAncestor(hwnd,3)!=0 && GetAncestor(active,3)==GetAncestor(hwnd,3))))
+ }
+}
+pub fn emergency_down()->bool{unsafe{GetAsyncKeyState(0x76)<0}}
 pub fn valid(hwnd:isize,pid:u32)->bool{unsafe{let mut current=0;GetWindowThreadProcessId(hwnd,&mut current);IsWindow(hwnd)!=0&&IsWindowVisible(hwnd)!=0&&IsIconic(hwnd)==0&&pid==current}}
 pub fn client_rect(hwnd:isize)->Result<Rect,String>{unsafe{let mut r=Rect::default();let mut point=Point::default();if GetClientRect(hwnd,&mut r)==0||ClientToScreen(hwnd,&mut point)==0{return Err("Cannot read target bounds".into())}r.right+=point.x;r.bottom+=point.y;r.left=point.x;r.top=point.y;if r.right<=r.left||r.bottom<=r.top{return Err("Target has no visible client area".into())}Ok(r)}}
