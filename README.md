@@ -37,9 +37,9 @@ require a service beyond static GitHub Pages.
   pixels. OCR worker
   and WASM load on demand. English traineddata downloads on first use.
 - Exact-pixel RGB checks with per-channel tolerance and conditional found state.
-- Local AI Agent Suite can be installed from the Marketplace. It adds two
-  draggable blocks: bounded screenshot-based navigation and a strict boolean
-  If/Else. A prompt-to-flow generator creates validated JSON blocks for review.
+- Local AI agent actions are available directly in the macro builder; the Marketplace
+  also includes an example Local AI Agent Suite. The two agent blocks provide
+  bounded screenshot-based navigation and a strict boolean If/Else. A prompt-to-flow generator creates validated JSON blocks for review.
   Ollama's local `qwen2.5vl:3b` model is pulled only when AI is invoked and
   explicitly unloaded after the run; a one-minute keep-alive also limits memory
   residency if the app exits unexpectedly. It is not downloaded on launch.
