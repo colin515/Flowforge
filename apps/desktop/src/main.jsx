@@ -93,7 +93,8 @@ function App() {
   const locked = Boolean(selected?.locked);
   const focused = path && macro ? get(macro, path) : null;
   const installed = (item) => custom.some((entry) => entry.sourceId === item.id);
-  const aiInstalled = custom.some((entry) => entry.sourceId === "local-ai-suite");
+  // AI is an optional built-in action for every macro. Ollama loads only on use.
+  const aiAvailable = true;
   const record = (kind, message) => {
     setStatus(message);
     setLogs((current) => [...current.slice(-199), { time: formatTime(), kind, message }]);
@@ -315,7 +316,7 @@ function App() {
     unload: () => invoke("ai_unload"),
   }, (message) => record("info", message));
   async function generateFlow(goal) {
-    if (!native || !aiInstalled || running || aiBusy) return;
+    if (!native || !aiAvailable || running || aiBusy) return;
     setAiBusy(true);
     const ai = localAI();
     try {
@@ -378,7 +379,7 @@ function App() {
   }
   const actions = { macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, insertAfter, duplicateBlock,
     dropBlock, deleteSelected, record, undo, redo, canUndo: historyTick >= 0 && past.current.length > 0, canRedo: future.current.length > 0, unsaved,
-    builderPane, setBuilderPane, run, create, fileRef, imported, id, selected, aiInstalled, aiBusy, generateFlow, native, windows, target, setTarget, refreshWindows };
+    builderPane, setBuilderPane, run, create, fileRef, imported, id, selected, aiAvailable, aiBusy, generateFlow, native, windows, target, setTarget, refreshWindows };
   return (
     <div className="studio">
       <div className="windowbar"><div className="window-drag" data-tauri-drag-region onDoubleClick={() => windowControl("toggleMaximize")}
@@ -450,7 +451,7 @@ function EmptyBuilder({ create, openMarket, importFile }) {
       <button className="secondary" onClick={openMarket}><Store size={16} /> Browse marketplace</button>
       <button className="ghost" onClick={importFile}><Upload size={16} /> Import JSON</button></div></section>;
 }
-function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, insertAfter, duplicateBlock, dropBlock, deleteSelected, record, undo, redo, canUndo, canRedo, unsaved, builderPane, setBuilderPane, run, id, selected, aiInstalled, aiBusy, generateFlow, native, windows, target, setTarget, refreshWindows }) {
+function BuilderView({ macro, locked, running, path, focused, setPath, mutate, save, duplicate, remove, reorder, add, insertAfter, duplicateBlock, dropBlock, deleteSelected, record, undo, redo, canUndo, canRedo, unsaved, builderPane, setBuilderPane, run, id, selected, aiAvailable, aiBusy, generateFlow, native, windows, target, setTarget, refreshWindows }) {
   const clicker = id === "auto-clicker" || selected.sourceId === "auto-clicker";
   const [variableName, setVariableName] = useState("");
   const [variableInitial, setVariableInitial] = useState("0");
@@ -463,7 +464,7 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
     ["SCREEN RECOGNITION", ["findText", "findColor", "findImage", "checkPixel"]],
     ["LOOPS & CONDITIONS", ["loop", "while", "ifFound", "ifCompare", "break", "continue", "wait"]],
     ["VARIABLES & MATH", ["setVar", "math"]],
-  ].filter(([name]) => name !== "AI AGENT" || aiInstalled);
+  ].filter(([name]) => name !== "AI AGENT" || aiAvailable);
   const query = paletteSearch.trim().toLowerCase();
   const countSteps = (blocks) => blocks.reduce((count, block) => count + 1 +
     ["body", "then", "else"].reduce((sum, branch) => sum +
@@ -534,7 +535,7 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
     </div>
     <div className="builder-tabs"><button className={builderPane === "blocks" ? "selected" : ""} onClick={() => setBuilderPane("blocks")}>Block builder</button>
       <button className={builderPane === "variables" ? "selected" : ""} onClick={() => setBuilderPane("variables")}>Variables <span>{Object.keys(variables).length}</span></button>
-      {aiInstalled && <button className={builderPane === "ai" ? "selected" : ""} onClick={() => setBuilderPane("ai")}>AI Generator</button>}
+      {aiAvailable && <button className={builderPane === "ai" ? "selected" : ""} onClick={() => setBuilderPane("ai")}>AI Generator</button>}
       {clicker && <button className={builderPane === "clicker" ? "selected" : ""} onClick={() => setBuilderPane("clicker")}>Clicker settings</button>}</div>
     {builderPane === "variables" ? <div className="variable-panel surface"><small>INITIAL VALUES</small><h2>Variables & counters</h2><p>Set starting values here. Set and Math blocks update them as a flow runs.</p>
       <div className="variable-list">{Object.entries(variables).map(([name, value]) => <label key={name}><code>{name}</code><input type="number" aria-label={`Initial value for ${name}`} disabled={locked || running}
@@ -543,7 +544,7 @@ function BuilderView({ macro, locked, running, path, focused, setPath, mutate, s
       <form onSubmit={addVariable}><input aria-label="Variable name" placeholder="Variable name" value={variableName} disabled={locked || running} onChange={(event) => setVariableName(event.target.value)} />
         <input aria-label="Initial value" type="number" value={variableInitial} disabled={locked || running} onChange={(event) => setVariableInitial(event.target.value)} />
         <button className="secondary" disabled={locked || running}><Plus size={15} /> Add variable</button></form></div> :
-    builderPane === "ai" && aiInstalled ? <div className="ai-panel surface"><span className="featureicon blue"><ScanLine size={24} /></span>
+    builderPane === "ai" && aiAvailable ? <div className="ai-panel surface"><span className="featureicon blue"><ScanLine size={24} /></span>
       <small>LOCAL AI · QWEN2.5-VL 3B</small><h2>Describe a flow.</h2><p>Turn a plain-language goal into a validated block tree. The model loads only when you generate or run an AI block, then unloads. Ollama must be installed and running; the model downloads on first use.</p>
       <p className="ai-service" role="status">{aiStatus}</p>
       <form onSubmit={(event) => { event.preventDefault(); generateFlow(aiGoal); }}><label htmlFor="ai-goal">WHAT SHOULD THIS FLOW DO?</label>
