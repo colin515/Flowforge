@@ -297,3 +297,27 @@ test("text blocks validate and stop before typing when focus check fails", async
   await assert.rejects(runner.run(macro), /Target lost focus/);
   assert.deepEqual(calls, ["released"]);
 });
+
+
+test("local AI maps coordinates from a compressed screenshot back to the real target", async () => {
+  const prompts = [];
+  const ai = new LocalAI({
+    prepare: async () => {},
+    generate: async ({ prompt }) => {
+      prompts.push(prompt);
+      return { text: '{"action":"click","x":512,"y":320}' };
+    },
+    unload: async () => {},
+  });
+  // Stub image compression so this test doesn't require a browser canvas.
+  ai.compactImage = async (image) => image;
+  const action = await ai.next("Click settings", { width: 2048, height: 1280, data: "fake-image" }, []);
+  assert.deepEqual(action, { action: "click", x: 1024, y: 640 });
+  assert.match(prompts[0], /1024 pixels wide and 640 pixels high/);
+});
+test("AI accepts fenced JSON but still rejects out-of-image clicks", () => {
+  assert.deepEqual(parseAction('```json\n{"action":"click","x":4,"y":5}\n```', { width: 10, height: 10 }), {
+    action: "click", x: 4, y: 5,
+  });
+  assert.throws(() => parseAction('{"action":"click","x":100,"y":5}', { width: 10, height: 10 }), /outside/);
+});
