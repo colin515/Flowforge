@@ -1,6 +1,14 @@
 export const defaults = {
   wait: { type: "wait", ms: 500, jitter: 0 },
-  move: { type: "move", x: 4, y: 0, relative: true, smooth: true, durationMs: 350 },
+  move: {
+    type: "move",
+    x: 4,
+    y: 0,
+    relative: true,
+    smooth: true,
+    durationMs: 350,
+    screen: false,
+  },
   click: { type: "click", button: "left" },
   key: { type: "key", key: "Space", holdMs: 50 },
   keyChord: { type: "keyChord", keys: "w+Shift", holdMs: 180 },
@@ -23,20 +31,54 @@ export const defaults = {
     click: false,
   },
   findImage: {
-    type: "findImage", template: "", confidence: 85, interval: 500,
-    timeout: 10000, click: true,
+    type: "findImage",
+    template: "",
+    confidence: 85,
+    interval: 500,
+    timeout: 10000,
+    click: true,
   },
-  checkPixel: { type: "checkPixel", x: 0, y: 0, color: "#ffffff", tolerance: 12, click: false },
+  checkPixel: {
+    type: "checkPixel",
+    x: 0,
+    y: 0,
+    color: "#ffffff",
+    tolerance: 12,
+    click: false,
+  },
   loop: { type: "loop", count: 10, body: [] },
-  while: { type: "while", name: "counter", operator: "<", operand: "10", mode: "while", body: [] },
+  while: {
+    type: "while",
+    name: "counter",
+    operator: "<",
+    operand: "10",
+    mode: "while",
+    body: [],
+  },
   ifFound: { type: "ifFound", then: [], else: [] },
-  ifCompare: { type: "ifCompare", name: "counter", operator: ">=", operand: "10", then: [], else: [] },
+  ifCompare: {
+    type: "ifCompare",
+    name: "counter",
+    operator: ">=",
+    operand: "10",
+    then: [],
+    else: [],
+  },
   setVar: { type: "setVar", name: "counter", value: "0" },
   math: { type: "math", name: "counter", operator: "+", operand: "1" },
   break: { type: "break" },
   continue: { type: "continue" },
-  aiNavigate: { type: "aiNavigate", goal: "Find the sound settings and turn sound off", maxSteps: 8 },
-  aiIf: { type: "aiIf", prompt: "Is the sound settings menu visible?", then: [], else: [] },
+  aiNavigate: {
+    type: "aiNavigate",
+    goal: "Find the sound settings and turn sound off",
+    maxSteps: 8,
+  },
+  aiIf: {
+    type: "aiIf",
+    prompt: "Is the sound settings menu visible?",
+    then: [],
+    else: [],
+  },
 };
 export const starters = [
   {
@@ -121,38 +163,59 @@ export const starters = [
     id: "da-hood-mobility",
     name: "Da Hood Mobility Flow",
     locked: false,
-    description: "Configurable movement key chords and short bursts for Roblox Da Hood. Keep its window focused and review game rules.",
+    description:
+      "Configurable movement key chords and short bursts for Roblox Da Hood. Keep its window focused and review game rules.",
     icon: "pointer",
     category: "Gaming",
     macro: {
       version: 1,
       name: "Da Hood Mobility Flow",
-      blocks: [{
-        type: "loop", count: 0, body: [
-          { type: "keyChord", keys: "w+Shift", holdMs: 180 },
-          { type: "wait", ms: 80, jitter: 30 },
-          { type: "keyChord", keys: "a+Shift", holdMs: 110 },
-          { type: "keyChord", keys: "d+Shift", holdMs: 110 },
-          { type: "wait", ms: 120, jitter: 40 },
-        ],
-      }],
+      blocks: [
+        {
+          type: "loop",
+          count: 0,
+          body: [
+            { type: "keyChord", keys: "w+Shift", holdMs: 180 },
+            { type: "wait", ms: 80, jitter: 30 },
+            { type: "keyChord", keys: "a+Shift", holdMs: 110 },
+            { type: "keyChord", keys: "d+Shift", holdMs: 110 },
+            { type: "wait", ms: 120, jitter: 40 },
+          ],
+        },
+      ],
     },
   },
   {
     id: "local-ai-suite",
     name: "Local AI Agent Suite",
     locked: false,
-    description: "On-demand local vision agent with prompt-to-flow generation, screen decisions, and bounded navigation. Requires Ollama; model downloads on first use.",
+    description:
+      "On-demand local vision agent with prompt-to-flow generation, screen decisions, and bounded navigation. Requires Ollama; model downloads on first use.",
     icon: "scan",
     category: "AI",
     macro: {
       version: 1,
       name: "Local AI Agent Suite",
-      blocks: [{ type: "aiIf", prompt: "Is the sound settings menu visible?", then: [
-        { type: "aiNavigate", goal: "Turn the sound off in this application's settings", maxSteps: 8 },
-      ], else: [
-        { type: "aiNavigate", goal: "Open sound settings and turn the sound off", maxSteps: 8 },
-      ] }],
+      blocks: [
+        {
+          type: "aiIf",
+          prompt: "Is the sound settings menu visible?",
+          then: [
+            {
+              type: "aiNavigate",
+              goal: "Turn the sound off in this application's settings",
+              maxSteps: 8,
+            },
+          ],
+          else: [
+            {
+              type: "aiNavigate",
+              goal: "Open sound settings and turn the sound off",
+              maxSteps: 8,
+            },
+          ],
+        },
+      ],
     },
   },
 ];
@@ -180,21 +243,28 @@ export function validateMacro(m) {
   )
     fail("Invalid macro name or version");
   const vars = m.vars ?? {};
-  if (!isObject(vars) || Object.keys(vars).length > 32) fail("Invalid variable list");
-  const variableName = (name) => typeof name === "string" && /^[a-zA-Z][a-zA-Z0-9_]{0,31}$/.test(name) && Object.hasOwn(vars, name);
+  if (!isObject(vars) || Object.keys(vars).length > 32)
+    fail("Invalid variable list");
+  const variableName = (name) =>
+    typeof name === "string" &&
+    /^[a-zA-Z][a-zA-Z0-9_]{0,31}$/.test(name) &&
+    Object.hasOwn(vars, name);
   for (const [name, value] of Object.entries(vars)) {
     if (!variableName(name)) fail("Invalid variable name");
     num(value, -1000000000, 1000000000, name);
   }
   const operand = (value) => {
-    if (typeof value !== "string" || !value.trim() || value.length > 40) fail("Invalid math operand");
+    if (typeof value !== "string" || !value.trim() || value.length > 40)
+      fail("Invalid math operand");
     const numeric = Number(value);
-    if (Number.isFinite(numeric)) num(numeric, -1000000000, 1000000000, "operand");
+    if (Number.isFinite(numeric))
+      num(numeric, -1000000000, 1000000000, "operand");
     else if (!variableName(value)) fail(`Unknown variable: ${value}`);
   };
   const comparison = (b) => {
     if (!variableName(b.name)) fail(`Unknown variable: ${b.name}`);
-    if (!["==", "!=", "<", "<=", ">", ">="].includes(b.operator)) fail("Invalid comparison");
+    if (!["==", "!=", "<", "<=", ">", ">="].includes(b.operator))
+      fail("Invalid comparison");
     operand(b.operand);
   };
   const walk = (blocks, depth, loopDepth = 0) => {
@@ -204,7 +274,11 @@ export function validateMacro(m) {
         fail("Unknown block or too many blocks");
       keys(b, Object.keys(defaults[b.type]));
       for (const k of Object.keys(defaults[b.type]))
-        if (!(k in b) && !(b.type === "move" && ["smooth", "durationMs"].includes(k))) fail(`Missing ${k}`);
+        if (
+          !(k in b) &&
+          !(b.type === "move" && ["smooth", "durationMs", "screen"].includes(k))
+        )
+          fail(`Missing ${k}`);
       switch (b.type) {
         case "wait":
           num(b.ms, 10, 3600000, "wait");
@@ -216,15 +290,19 @@ export function validateMacro(m) {
           num(b.x, -32768, 32768, "x");
           num(b.y, -32768, 32768, "y");
           if (typeof b.relative !== "boolean") fail("relative must be boolean");
-          if (b.smooth !== undefined && typeof b.smooth !== "boolean") fail("smooth must be boolean");
-          if (b.durationMs !== undefined) num(b.durationMs, 40, 10000, "movement duration");
+          if (b.smooth !== undefined && typeof b.smooth !== "boolean")
+            fail("smooth must be boolean");
+          if (b.screen !== undefined && typeof b.screen !== "boolean")
+            fail("screen must be boolean");
+          if (b.durationMs !== undefined)
+            num(b.durationMs, 40, 10000, "movement duration");
           break;
         case "click":
           if (!["left", "right"].includes(b.button)) fail("Invalid button");
           break;
         case "key":
           if (
-              !/^(Space|Enter|Tab|Escape|Shift|Control|Alt|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/.test(
+            !/^(Space|Enter|Tab|Escape|Shift|Control|Alt|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/.test(
               b.key,
             )
           )
@@ -235,13 +313,28 @@ export function validateMacro(m) {
         case "keyChord": {
           if (typeof b.keys !== "string") fail("Invalid key chord");
           const parts = b.keys.split("+");
-          if (parts.length < 2 || parts.length > 4 || new Set(parts).size !== parts.length ||
-            parts.some((part) => !/^(Space|Enter|Tab|Escape|Shift|Control|Alt|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/.test(part))) fail("Invalid key chord");
+          if (
+            parts.length < 2 ||
+            parts.length > 4 ||
+            new Set(parts).size !== parts.length ||
+            parts.some(
+              (part) =>
+                !/^(Space|Enter|Tab|Escape|Shift|Control|Alt|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/.test(
+                  part,
+                ),
+            )
+          )
+            fail("Invalid key chord");
           num(b.holdMs, 10, 5000, "chord hold");
           break;
         }
         case "text":
-          if (typeof b.value !== "string" || !b.value.length || b.value.length > 1000 || b.value.includes("\0"))
+          if (
+            typeof b.value !== "string" ||
+            !b.value.length ||
+            b.value.length > 1000 ||
+            b.value.includes("\0")
+          )
             fail("Text must contain 1–1000 characters without NUL bytes");
           break;
         case "drag":
@@ -269,8 +362,11 @@ export function validateMacro(m) {
           if (typeof b.click !== "boolean") fail("click must be boolean");
           break;
         case "findImage":
-          if (typeof b.template !== "string" ||
-            !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(b.template) || b.template.length > 200000)
+          if (
+            typeof b.template !== "string" ||
+            !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(b.template) ||
+            b.template.length > 200000
+          )
             fail("Upload a PNG template under 150 KB");
           num(b.confidence, 0, 100, "confidence");
           num(b.interval, 100, 10000, "scan interval");
@@ -280,7 +376,8 @@ export function validateMacro(m) {
         case "checkPixel":
           for (const axis of ["x", "y"]) {
             num(b[axis], 0, 32768, axis);
-            if (!Number.isInteger(b[axis])) fail("Pixel coordinates must be integers");
+            if (!Number.isInteger(b[axis]))
+              fail("Pixel coordinates must be integers");
           }
           if (!/^#[0-9a-f]{6}$/i.test(b.color)) fail("Invalid color");
           num(b.tolerance, 0, 80, "tolerance");
@@ -311,7 +408,8 @@ export function validateMacro(m) {
           break;
         case "math":
           if (!variableName(b.name)) fail(`Unknown variable: ${b.name}`);
-          if (!["+", "-", "*", "/"].includes(b.operator)) fail("Invalid math operation");
+          if (!["+", "-", "*", "/"].includes(b.operator))
+            fail("Invalid math operation");
           operand(b.operand);
           break;
         case "break":
@@ -319,12 +417,23 @@ export function validateMacro(m) {
           if (!loopDepth) fail(`${b.type} must be inside a loop`);
           break;
         case "aiNavigate":
-          if (typeof b.goal !== "string" || !b.goal.trim() || b.goal.length > 500) fail("Invalid AI navigation goal");
+          if (
+            typeof b.goal !== "string" ||
+            !b.goal.trim() ||
+            b.goal.length > 500
+          )
+            fail("Invalid AI navigation goal");
           num(b.maxSteps, 1, 20, "AI steps");
-          if (!Number.isInteger(b.maxSteps)) fail("AI steps must be an integer");
+          if (!Number.isInteger(b.maxSteps))
+            fail("AI steps must be an integer");
           break;
         case "aiIf":
-          if (typeof b.prompt !== "string" || !b.prompt.trim() || b.prompt.length > 500) fail("Invalid AI question");
+          if (
+            typeof b.prompt !== "string" ||
+            !b.prompt.trim() ||
+            b.prompt.length > 500
+          )
+            fail("Invalid AI question");
           walk(b.then, depth + 1, loopDepth);
           walk(b.else, depth + 1, loopDepth);
           break;

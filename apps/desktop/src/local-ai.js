@@ -1,10 +1,12 @@
 import { parseMacro } from "../../../packages/shared/macros.js";
 
 const ACTIONS = new Set(["click", "type", "key", "scroll", "done", "fail"]);
-const KEY = /^(Space|Enter|Tab|Escape|Shift|Control|Alt|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/;
+const KEY =
+  /^(Space|Enter|Tab|Escape|Shift|Control|Alt|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|[a-zA-Z0-9])$/;
 function decoded(text) {
   const result = JSON.parse(text);
-  if (!result || typeof result !== "object" || Array.isArray(result)) throw new Error("Local AI returned an invalid object");
+  if (!result || typeof result !== "object" || Array.isArray(result))
+    throw new Error("Local AI returned an invalid object");
   return result;
 }
 export function parseDecision(text) {
@@ -15,27 +17,55 @@ export function parseDecision(text) {
 }
 export function parseAction(text, frame) {
   const value = decoded(text);
-  if (!ACTIONS.has(value.action)) throw new Error("Local AI proposed an unsupported action");
-  if (value.action === "click" && (!Number.isInteger(value.x) || !Number.isInteger(value.y) ||
-    value.x < 0 || value.y < 0 || value.x >= frame.width || value.y >= frame.height))
+  if (!ACTIONS.has(value.action))
+    throw new Error("Local AI proposed an unsupported action");
+  if (
+    value.action === "click" &&
+    (!Number.isInteger(value.x) ||
+      !Number.isInteger(value.y) ||
+      value.x < 0 ||
+      value.y < 0 ||
+      value.x >= frame.width ||
+      value.y >= frame.height)
+  )
     throw new Error("Local AI click is outside the captured window");
-  if (value.action === "type" && (typeof value.text !== "string" || !value.text.length || value.text.length > 1000 || value.text.includes("\0")))
+  if (
+    value.action === "type" &&
+    (typeof value.text !== "string" ||
+      !value.text.length ||
+      value.text.length > 1000 ||
+      value.text.includes("\0"))
+  )
     throw new Error("Local AI returned invalid text input");
-  if (value.action === "key" && !KEY.test(value.key)) throw new Error("Local AI returned an unsupported key");
-  if (value.action === "scroll" && (!Number.isInteger(value.amount) || value.amount < -3 || value.amount > 3))
+  if (value.action === "key" && !KEY.test(value.key))
+    throw new Error("Local AI returned an unsupported key");
+  if (
+    value.action === "scroll" &&
+    (!Number.isInteger(value.amount) || value.amount < -3 || value.amount > 3)
+  )
     throw new Error("Local AI scroll amount is out of bounds");
-  if (value.action === "fail" && typeof value.reason !== "string") throw new Error("Local AI did not explain the failure");
+  if (value.action === "fail" && typeof value.reason !== "string")
+    throw new Error("Local AI did not explain the failure");
   return value;
 }
 export class LocalAI {
-  constructor(bridge, onStatus = () => {}) { this.bridge = bridge; this.onStatus = onStatus; this.ready = false; this.abort = new AbortController(); }
-  cancel() { this.abort.abort(); }
+  constructor(bridge, onStatus = () => {}) {
+    this.bridge = bridge;
+    this.onStatus = onStatus;
+    this.ready = false;
+    this.abort = new AbortController();
+  }
+  cancel() {
+    this.abort.abort();
+  }
   async interruptible(promise) {
     if (this.abort.signal.aborted) throw new Error("Stopped");
     return new Promise((resolve, reject) => {
       const onStop = () => reject(new Error("Stopped"));
       this.abort.signal.addEventListener("abort", onStop, { once: true });
-      Promise.resolve(promise).then(resolve, reject).finally(() => this.abort.signal.removeEventListener("abort", onStop));
+      Promise.resolve(promise)
+        .then(resolve, reject)
+        .finally(() => this.abort.signal.removeEventListener("abort", onStop));
     });
   }
   async prepare() {
@@ -56,13 +86,17 @@ export class LocalAI {
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(source.width * scale));
     canvas.height = Math.max(1, Math.round(source.height * scale));
-    canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+    canvas
+      .getContext("2d")
+      .drawImage(source, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL("image/png");
   }
   async ask(prompt, image, maxTokens = 256) {
     await this.prepare();
     const compactImage = await this.compactImage(image);
-    const { text } = await this.interruptible(this.bridge.generate({ prompt, image: compactImage, maxTokens }));
+    const { text } = await this.interruptible(
+      this.bridge.generate({ prompt, image: compactImage, maxTokens }),
+    );
     return text;
   }
   async decide(goal, frame) {
