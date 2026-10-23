@@ -6,10 +6,15 @@ async function pixels(source) {
   img.src = source;
   await img.decode();
   const canvas = document.createElement("canvas");
-  canvas.width = img.width; canvas.height = img.height;
+  canvas.width = img.width;
+  canvas.height = img.height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(img, 0, 0);
-  return { width: img.width, height: img.height, data: ctx.getImageData(0, 0, img.width, img.height).data };
+  return {
+    width: img.width,
+    height: img.height,
+    data: ctx.getImageData(0, 0, img.width, img.height).data,
+  };
 }
 export class Vision {
   workerPromise = null;
@@ -45,7 +50,8 @@ export class Vision {
         this.templates.set(b.template, pixels(b.template));
       }
       const template = await this.templates.get(b.template);
-      if (template.width > 128 || template.height > 128) throw new Error("Template must be at most 128 × 128 pixels");
+      if (template.width > 128 || template.height > 128)
+        throw new Error("Template must be at most 128 × 128 pixels");
       const screenshot = await pixels(frame.data);
       if (signal.aborted) throw new Error("Stopped");
       return matchTemplate(screenshot, template, b.confidence, signal);

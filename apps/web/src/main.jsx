@@ -66,14 +66,25 @@ function App() {
   useEffect(() => {
     if (config.repository.startsWith("YOUR_")) return;
     const controller = new AbortController();
-    fetch(`https://api.github.com/repos/${config.repository}/releases/latest`, { signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Release unavailable")))
+    fetch(`https://api.github.com/repos/${config.repository}/releases/latest`, {
+      signal: controller.signal,
+    })
+      .then((response) =>
+        response.ok
+          ? response.json()
+          : Promise.reject(new Error("Release unavailable")),
+      )
       .then((data) => {
-        const installer = data.assets?.find((asset) =>
-          /^Flowforge_.*_x64-setup\.exe$/i.test(asset.name) &&
-          asset.browser_download_url?.startsWith(`https://github.com/${config.repository}/releases/download/`));
+        const installer = data.assets?.find(
+          (asset) =>
+            /^Flowforge_.*_x64-setup\.exe$/i.test(asset.name) &&
+            asset.browser_download_url?.startsWith(
+              `https://github.com/${config.repository}/releases/download/`,
+            ),
+        );
         if (installer) setInstallerUrl(installer.browser_download_url);
-      }).catch(() => {});
+      })
+      .catch(() => {});
     return () => controller.abort();
   }, []);
   useEffect(() => {
@@ -184,15 +195,17 @@ function App() {
       </div>
       <div className="markettoolbar">
         <div className="tabs">
-          {["All", "Utility", "Productivity", "Vision", "Gaming", "AI"].map((v) => (
-            <button
-              key={v}
-              className={v === filter ? "selected" : ""}
-              onClick={() => setFilter(v)}
-            >
-              {v}
-            </button>
-          ))}
+          {["All", "Utility", "Productivity", "Vision", "Gaming", "AI"].map(
+            (v) => (
+              <button
+                key={v}
+                className={v === filter ? "selected" : ""}
+                onClick={() => setFilter(v)}
+              >
+                {v}
+              </button>
+            ),
+          )}
         </div>
         <input
           aria-label="Search macros"
@@ -348,7 +361,10 @@ function App() {
           >
             {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
           </button>
-          <a className="navdownload" href={configured ? installerUrl : "#download"}>
+          <a
+            className="navdownload"
+            href={configured ? installerUrl : "#download"}
+          >
             Get Flowforge <ArrowUpRight size={14} />
           </a>
         </div>
@@ -526,8 +542,8 @@ function App() {
                   </div>
                   <h3>A flow that can see.</h3>
                   <p>
-                    Find visible text, colors, and image templates. Turn a
-                    match into an action with OCR and visual matching.
+                    Find visible text, colors, and image templates. Turn a match
+                    into an action with OCR and visual matching.
                   </p>
                   <div className="scanpreview">
                     <span>Video playing</span>

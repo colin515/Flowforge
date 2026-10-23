@@ -7,7 +7,8 @@ export class AudioFeedback {
   activate() {
     if (!this.enabled) return;
     this.context ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (this.context.state === "suspended") this.context.resume().catch(() => {});
+    if (this.context.state === "suspended")
+      this.context.resume().catch(() => {});
   }
   note(frequency, delay, duration, volume, shape = "sine") {
     const context = this.context;
@@ -23,7 +24,10 @@ export class AudioFeedback {
     oscillator.connect(gain).connect(context.destination);
     oscillator.start(start);
     oscillator.stop(start + duration + 0.01);
-    oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+    oscillator.onended = () => {
+      oscillator.disconnect();
+      gain.disconnect();
+    };
   }
   play(event) {
     if (!this.enabled || !this.context) return;
@@ -39,5 +43,8 @@ export class AudioFeedback {
       this.note(240, 0.13, 0.25, 0.03, "triangle");
     }
   }
-  dispose() { this.context?.close().catch(() => {}); this.context = null; }
+  dispose() {
+    this.context?.close().catch(() => {});
+    this.context = null;
+  }
 }
